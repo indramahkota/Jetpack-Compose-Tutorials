@@ -75,6 +75,7 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.okhttp.sse)
     implementation(libs.chucker)
+    implementation("com.github.jeziellago:compose-markdown:0.5.8")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.ext.junit)
