@@ -1,7 +1,6 @@
 package com.smarttoolfactory.tutorial4_1chatbot
 
-import android.service.autofill.Validators.and
-import androidx.compose.foundation.MutatorMutex
+import android.R.attr.startOffset
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -16,9 +15,9 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
@@ -32,7 +31,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlin.random.Random
 
 
@@ -51,6 +49,23 @@ fun TexChunkDetectTextPreview() {
 
     var chunkText by remember {
         mutableStateOf("")
+    }
+
+    val deltas = remember {
+        listOf(
+            "defined ", "by volatility, complexity", ", and accelerating\n",
+            "change. Markets evolve ", "faster than planning\n",
+            "cycles", "customer", " expectations shift", " continuously."
+        )
+    }
+
+    LaunchedEffect(Unit) {
+        delay(1000)
+        deltas.forEach {
+            println("Delta: $it")
+            chunkText += it
+            delay(1000)
+        }
     }
 
     Column {
@@ -106,7 +121,11 @@ fun TexChunkDetectText(text: String) {
         onTextLayout = { textLayout: TextLayoutResult ->
             if (text.isNotEmpty()) {
 
-                val endIndex = text.lastIndex
+                val endIndex = if (text[text.lastIndex] == '\n'){
+                    text.lastIndex -1
+                }else {
+                    text.lastIndex
+                }
 
                 println("Text in textLayout: $text")
                 // Get the line of the first and last character of the word
@@ -124,18 +143,17 @@ fun TexChunkDetectText(text: String) {
                 val sameLine = startLine == endLine
 
                 if (sameLine) {
-                    println("Adding in same line")
 
-                    // Get top-left position of the word
-                    val startOffset: Offset = textLayout.getCursorRect(startIndex).topLeft
-
-                    // Get bottom-right position
-                    val endOffset: Offset = textLayout.getBoundingBox(endIndex).bottomRight
+                    val left = textLayout.getBoundingBox(startIndex).left
+                    val right = textLayout.getBoundingBox(endIndex).right
+                    val top = textLayout.getLineTop(startLine)
+                    val bottom = textLayout.getLineBottom(startLine)
 
                     val rect = Rect(
-                        topLeft = startOffset,
-                        bottomRight = endOffset
+                        topLeft = Offset(left, top),
+                        bottomRight = Offset(right, bottom)
                     )
+                    println("left: $left, right: $right, top:$top, bottom:$bottom, Adding in same line $rect")
 
                     rectList.add(rect)
                 } else {
@@ -143,30 +161,36 @@ fun TexChunkDetectText(text: String) {
 
                     val startRect: Rect = textLayout.getCursorRect(startIndex)
                     val startLineEnd = textLayout.getLineRight(startLine)
-                    val endRect: Rect = textLayout.getBoundingBox(endIndex)
 
                     var rect = Rect(
                         topLeft = startRect.topLeft,
                         bottomRight = Offset(startLineEnd, startRect.bottom)
                     )
                     rectList.add(rect)
-                    println("Adding in same line first rect: $rect")
+                    println("ADDING in same line FIRST rect: $rect")
+
+                    val left = textLayout.getBoundingBox(endIndex).left
+                    val right = textLayout.getBoundingBox(endIndex).right
+                    val top = textLayout.getLineTop(endLine)
+                    val bottom = textLayout.getLineBottom(endLine)
 
                     rect = Rect(
-                        topLeft = Offset(0f, endRect.top),
-                        bottomRight = endRect.bottomRight
+                        topLeft = Offset(0f, top),
+                        bottomRight = Offset(left.coerceAtLeast(right), bottom)
                     )
+
                     rectList.add(rect)
+                    println("ADDING in same line Second rect: $rect")
+
                 }
 
                 startIndex = endIndex + 1
             }
         },
         text = text,
-        fontSize = 26.sp
+        fontSize = 14.sp
     )
 }
-
 
 @Preview
 @Composable
@@ -179,17 +203,20 @@ fun TrailFadeInTextPreview() {
         mutableStateOf("")
     }
 
-    LaunchedEffect(Unit) {
-        val deltas = listOf(
+    val deltas = remember {
+        listOf(
             "defined ", "by volatility, complexity", ", and accelerating\n",
-            "change. Markets evolve", "faster than planning\n",
+            "change. Markets evolve ", "faster than planning\n",
             "cycles", "customer", " expectations shift", " continuously."
         )
+    }
 
-        delay(2000)
+    LaunchedEffect(Unit) {
+        delay(1000)
         deltas.forEach {
+            println("Delta: $it")
             chunkText += it
-            delay(150)
+            delay(100)
         }
     }
 
@@ -225,7 +252,7 @@ data class RectWithAlpha(
 @Composable
 fun TrailFadeInText(text: String) {
     val rectMap = remember {
-        mutableStateMapOf<Int, RectWithAlpha>()
+        mutableStateListOf<RectWithAlpha>()
     }
 
     var startIndex by remember {
@@ -236,28 +263,20 @@ fun TrailFadeInText(text: String) {
         mutableStateOf(false)
     }
 
-
-    val mutex = remember {
-        Mutex()
-    }
-
-
     LaunchedEffect(tick) {
-        delay(33)
 
         var indexToRemove = -1
-        rectMap.forEach { (index, rect) ->
-            val alpha = (rect.alpha.value + .04f).coerceIn(0f, 1f)
+        rectMap.forEachIndexed { index, rect ->
+            val alpha = (rect.alpha.value + .1f).coerceIn(0f, 1f)
             if (alpha >= 1f) {
                 indexToRemove = index
-                println("Index to remove: $indexToRemove")
             } else {
                 rect.alpha.value = alpha
             }
         }
 
-        rectMap.remove(indexToRemove)
-
+//        rectMap.remove(indexToRemove)
+        delay(16)
         tick = !tick
     }
 
@@ -271,9 +290,7 @@ fun TrailFadeInText(text: String) {
 
                 val size = rectMap.size
 
-                println("Draw rect size: $size")
-
-                rectMap.forEach { (index: Int, rectWithAlpha: RectWithAlpha) ->
+                rectMap.forEachIndexed { index, rectWithAlpha: RectWithAlpha ->
 
                     val alpha = 1 - rectWithAlpha.alpha.value
 
@@ -292,25 +309,21 @@ fun TrailFadeInText(text: String) {
         onTextLayout = { textLayout: TextLayoutResult ->
             if (text.isNotEmpty()) {
 
-                val endIndex = text.lastIndex
+                val endIndex = if (text[text.lastIndex] == '\n'){
+                    text.lastIndex -1
+                }else {
+                    text.lastIndex
+                }
 
-                println("Text in textLayout: $text")
                 // Get the line of the first and last character of the word
                 val startLine = textLayout.getLineForOffset(startIndex)
                 val endLine = textLayout.getLineForOffset(endIndex)
-//
-                println(
-                    "startIndex:$startIndex, " +
-                            "endIndex: $endIndex, " +
-                            "startLine: $startLine, " +
-                            "endLine: $endLine, " +
-                            "Same line: ${startLine == endLine}"
-                )
-
                 val sameLine = startLine == endLine
 
+                println("TEXT: $text")
+
                 if (sameLine) {
-                    println("Adding in same line")
+                    println("Adding in same line index: $startIndex")
 
                     // Get top-left position of the word
                     val startOffset: Offset = textLayout.getCursorRect(startIndex).topLeft
@@ -323,33 +336,35 @@ fun TrailFadeInText(text: String) {
                         bottomRight = endOffset
                     )
 
-                    rectMap[startIndex] = RectWithAlpha(rect = rect)
+                    rectMap.add(RectWithAlpha(rect = rect))
                 } else {
                     println("Next line required... startLine: $startLine, endLine: $endLine")
 
                     val startRect: Rect = textLayout.getCursorRect(startIndex)
                     val startLineEnd = textLayout.getLineRight(startLine)
-                    val endRect: Rect = textLayout.getBoundingBox(endIndex)
 
                     var rect = Rect(
                         topLeft = startRect.topLeft,
                         bottomRight = Offset(startLineEnd, startRect.bottom)
                     )
-                    rectMap[startIndex] = RectWithAlpha(rect = rect)
+                    rectMap.add(RectWithAlpha(rect = rect))
 
-                    println("Adding in same line first rect: $rect")
+                    val left = textLayout.getBoundingBox(endIndex).left
+                    val right = textLayout.getBoundingBox(endIndex).right
+                    val top = textLayout.getLineTop(endLine)
+                    val bottom = textLayout.getLineBottom(endLine)
 
                     rect = Rect(
-                        topLeft = Offset(0f, endRect.top),
-                        bottomRight = endRect.bottomRight
+                        topLeft = Offset(0f, top),
+                        bottomRight = Offset(left.coerceAtLeast(right), bottom)
                     )
-                    rectMap[endIndex] = RectWithAlpha(rect = rect)
+                    rectMap.add(RectWithAlpha(rect = rect))
                 }
 
                 startIndex = endIndex + 1
             }
         },
         text = text,
-        fontSize = 14.sp
+        fontSize = 18.sp
     )
 }
