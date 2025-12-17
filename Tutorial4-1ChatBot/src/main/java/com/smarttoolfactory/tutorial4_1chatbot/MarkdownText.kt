@@ -18,6 +18,7 @@ import com.halilibo.richtext.markdown.BasicMarkdown
 import com.halilibo.richtext.markdown.node.AstNode
 import com.halilibo.richtext.ui.BasicRichText
 import com.halilibo.richtext.ui.RichTextScope
+import com.mohamedrejeb.richeditor.model.rememberRichTextState
 import dev.jeziellago.compose.markdowntext.MarkdownText
 
 val markdownText = """
@@ -110,4 +111,15 @@ fun MarkdownTextSample() {
 
         RichTextScope.BasicMarkdown(astNode)
     }
+}
+
+@Preview
+@Composable
+fun RichTextEditorPreview() {
+    val richTextState = rememberRichTextState()
+//    richTextState.setMarkdown(markdownText)
+    richTextState.setHtml(tableContent)
+    val html = "<p><b>Compose Rich Editor</b></p>"
+    richTextState.setHtml(html)
+//    RichTextEditor(state = state)
 }
