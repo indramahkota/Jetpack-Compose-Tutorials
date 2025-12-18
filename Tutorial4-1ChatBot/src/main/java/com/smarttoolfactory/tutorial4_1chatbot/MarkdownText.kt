@@ -8,6 +8,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -19,7 +20,10 @@ import com.halilibo.richtext.markdown.node.AstNode
 import com.halilibo.richtext.ui.BasicRichText
 import com.halilibo.richtext.ui.RichTextScope
 import com.mohamedrejeb.richeditor.model.rememberRichTextState
+import com.mohamedrejeb.richeditor.ui.material3.RichTextEditor
 import dev.jeziellago.compose.markdowntext.MarkdownText
+import io.noties.markwon.Markwon
+import io.noties.markwon.ext.tables.TablePlugin
 
 val markdownText = """
     # Demo
@@ -82,15 +86,6 @@ fun MarkdownTextSample() {
             .padding(16.dp)
             .verticalScroll(rememberScrollState())
     ) {
-
-        Text(
-            text = "Compose-Markdown",
-            fontSize = 28.sp,
-            color = Color.Red,
-            fontWeight = FontWeight.SemiBold
-        )
-        MarkdownText(markdown = markdownText)
-
         Text(
             text = "Compose-RichText",
             fontSize = 28.sp,
@@ -115,11 +110,29 @@ fun MarkdownTextSample() {
 
 @Preview
 @Composable
+fun MarkDownTextPreview() {
+    MarkdownText(
+        markdown = markdownText,
+    )
+}
+
+@Preview
+@Composable
+fun MarkWonTextPreview() {
+    val context = LocalContext.current
+
+    val markwon = Markwon.builder(context)
+        .usePlugin(TablePlugin.create(context))
+        .build()
+}
+
+@Preview
+@Composable
 fun RichTextEditorPreview() {
     val richTextState = rememberRichTextState()
 //    richTextState.setMarkdown(markdownText)
     richTextState.setHtml(tableContent)
     val html = "<p><b>Compose Rich Editor</b></p>"
     richTextState.setHtml(html)
-//    RichTextEditor(state = state)
+    RichTextEditor(state = richTextState)
 }
