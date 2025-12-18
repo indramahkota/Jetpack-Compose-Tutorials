@@ -19,8 +19,7 @@ import com.halilibo.richtext.markdown.BasicMarkdown
 import com.halilibo.richtext.markdown.node.AstNode
 import com.halilibo.richtext.ui.BasicRichText
 import com.halilibo.richtext.ui.RichTextScope
-import com.mohamedrejeb.richeditor.model.rememberRichTextState
-import com.mohamedrejeb.richeditor.ui.material3.RichTextEditor
+
 import dev.jeziellago.compose.markdowntext.MarkdownText
 import io.noties.markwon.Markwon
 import io.noties.markwon.ext.tables.TablePlugin
@@ -124,15 +123,4 @@ fun MarkWonTextPreview() {
     val markwon = Markwon.builder(context)
         .usePlugin(TablePlugin.create(context))
         .build()
-}
-
-@Preview
-@Composable
-fun RichTextEditorPreview() {
-    val richTextState = rememberRichTextState()
-//    richTextState.setMarkdown(markdownText)
-    richTextState.setHtml(tableContent)
-    val html = "<p><b>Compose Rich Editor</b></p>"
-    richTextState.setHtml(html)
-    RichTextEditor(state = richTextState)
 }

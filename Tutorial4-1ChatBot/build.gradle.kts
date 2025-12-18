@@ -76,15 +76,26 @@ dependencies {
     implementation(libs.okhttp.sse)
     implementation(libs.chucker)
     implementation("com.halilibo.compose-richtext:richtext-ui:1.0.0-alpha03")
-    implementation("com.halilibo.compose-richtext:richtext-commonmark:1.0.0-alpha03")
+    implementation("com.halilibo.compose-richtext:richtext-commonmark:1.0.0-alpha03"){
+        exclude(group = "com.atlassian.commonmark", module = "commonmark")
+        exclude(group = "com.atlassian.commonmark", module = "commonmark-ext-gfm-strikethrough")
+        exclude(group = "com.atlassian.commonmark", module = "commonmark-ext-gfm-tables")
+    }
     implementation("com.github.jeziellago:compose-markdown:0.5.8") {
         exclude(group = "com.atlassian.commonmark", module = "commonmark")
         exclude(group = "com.atlassian.commonmark", module = "commonmark-ext-gfm-strikethrough")
         exclude(group = "com.atlassian.commonmark", module = "commonmark-ext-gfm-tables")
     }
-    implementation("com.mohamedrejeb.richeditor:richeditor-compose:1.0.0-rc13")
-    implementation("io.noties.markwon:core:4.6.2")
-    implementation("io.noties.markwon:ext-tables:4.6.2")
+    implementation("io.noties.markwon:core:4.6.2"){
+        exclude(group = "com.atlassian.commonmark", module = "commonmark")
+        exclude(group = "com.atlassian.commonmark", module = "commonmark-ext-gfm-strikethrough")
+        exclude(group = "com.atlassian.commonmark", module = "commonmark-ext-gfm-tables")
+    }
+    implementation("io.noties.markwon:ext-tables:4.6.2"){
+        exclude(group = "com.atlassian.commonmark", module = "commonmark")
+        exclude(group = "com.atlassian.commonmark", module = "commonmark-ext-gfm-strikethrough")
+        exclude(group = "com.atlassian.commonmark", module = "commonmark-ext-gfm-tables")
+    }
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.ext.junit)
