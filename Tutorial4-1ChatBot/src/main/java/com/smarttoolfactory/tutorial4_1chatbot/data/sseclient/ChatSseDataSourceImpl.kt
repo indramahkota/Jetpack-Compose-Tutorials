@@ -1,0 +1,56 @@
+package com.smarttoolfactory.tutorial4_1chatbot.data.sseclient
+
+import com.smarttoolfactory.tutorial4_1chatbot.data.model.SseMessage
+import kotlinx.coroutines.channels.awaitClose
+
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
+import okhttp3.sse.EventSource
+import okhttp3.sse.EventSourceListener
+import okhttp3.sse.EventSources
+import javax.inject.Inject
+
+class ChatSseDataSourceImpl @Inject constructor(
+    private val okHttpClient: OkHttpClient
+) : ChatSseDataSource {
+
+    override fun connectAsFlow(
+        request: Request
+    ): Flow<SseMessage> = callbackFlow {
+        val factory = EventSources.createFactory(okHttpClient)
+
+        val eventSource: EventSource = factory.newEventSource(
+            request,
+            object : EventSourceListener() {
+
+                override fun onEvent(
+                    eventSource: EventSource,
+                    id: String?,
+                    type: String?,
+                    data: String
+                ) {
+                    trySend(SseMessage.Event(type = type, data = data))
+                }
+
+                override fun onFailure(eventSource: EventSource, t: Throwable?, response: Response?) {
+                    val err: Throwable = t ?: RuntimeException("SSE failure, HTTP=${response?.code}")
+                    trySend(SseMessage.Error(err))
+                    close(err)
+                }
+
+                override fun onClosed(eventSource: EventSource) {
+                    trySend(SseMessage.Closed)
+                    close()
+                }
+            }
+        )
+
+        awaitClose {
+            println("Close")
+            eventSource.cancel()
+        }
+    }
+}

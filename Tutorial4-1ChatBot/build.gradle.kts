@@ -1,9 +1,12 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.compose)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.hilt)
 }
 
 android {
@@ -55,8 +58,10 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
-    kotlinOptions {
-        jvmTarget = "11"
+    kotlin {
+        compilerOptions {
+            jvmTarget = JvmTarget.JVM_11
+        }
     }
     buildFeatures {
         compose = true
@@ -75,8 +80,15 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.okhttp.sse)
     implementation(libs.chucker)
-    implementation("com.halilibo.compose-richtext:richtext-ui:1.0.0-alpha03")
-    implementation("com.halilibo.compose-richtext:richtext-commonmark:1.0.0-alpha03"){
+    implementation(libs.hilt.android)
+    ksp(libs.hilt.compiler)
+
+    implementation(libs.moshi)
+    ksp(libs.moshi.kotlin.codegen)
+    ksp(libs.kotlin.metadata.jvm)
+
+    implementation(libs.richtext.ui)
+    implementation("com.halilibo.compose-richtext:richtext-commonmark:1.0.0-alpha03") {
         exclude(group = "com.atlassian.commonmark", module = "commonmark")
         exclude(group = "com.atlassian.commonmark", module = "commonmark-ext-gfm-strikethrough")
         exclude(group = "com.atlassian.commonmark", module = "commonmark-ext-gfm-tables")
@@ -86,12 +98,12 @@ dependencies {
         exclude(group = "com.atlassian.commonmark", module = "commonmark-ext-gfm-strikethrough")
         exclude(group = "com.atlassian.commonmark", module = "commonmark-ext-gfm-tables")
     }
-    implementation("io.noties.markwon:core:4.6.2"){
+    implementation("io.noties.markwon:core:4.6.2") {
         exclude(group = "com.atlassian.commonmark", module = "commonmark")
         exclude(group = "com.atlassian.commonmark", module = "commonmark-ext-gfm-strikethrough")
         exclude(group = "com.atlassian.commonmark", module = "commonmark-ext-gfm-tables")
     }
-    implementation("io.noties.markwon:ext-tables:4.6.2"){
+    implementation("io.noties.markwon:ext-tables:4.6.2") {
         exclude(group = "com.atlassian.commonmark", module = "commonmark")
         exclude(group = "com.atlassian.commonmark", module = "commonmark-ext-gfm-strikethrough")
         exclude(group = "com.atlassian.commonmark", module = "commonmark-ext-gfm-tables")

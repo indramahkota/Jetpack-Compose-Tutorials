@@ -1,4 +1,4 @@
-package com.smarttoolfactory.tutorial4_1chatbot
+package com.smarttoolfactory.tutorial4_1chatbot.samples
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
