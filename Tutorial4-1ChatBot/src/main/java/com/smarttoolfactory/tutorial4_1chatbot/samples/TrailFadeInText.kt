@@ -1,11 +1,15 @@
-package com.smarttoolfactory.tutorial4_1chatbot
+package com.smarttoolfactory.tutorial4_1chatbot.samples
 
-import android.R.attr.startOffset
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -17,22 +21,142 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.sync.Mutex
 import kotlin.random.Random
 
+
+@Preview
+@Composable
+fun GetTextBoundingRectPreview() {
+    var boundingRect by remember {
+        mutableStateOf(Rect.Zero)
+    }
+
+    val text =
+        "Lorem Ipsum\n is simply **dummy** çöüğı<>₺ş- text of the printing and typesetting industry.\n" +
+                " Lorem Ipsum has been the industry's standard dummy text ever since the 1500s," +
+                " when an unknown printer took a galley of type and scrambled " +
+                "it to make a type specimen book. It has survived not only five centuries, but " +
+                "also the leap into electronic typesetting, remaining essentially unchanged. "
+
+    var textLayout by remember {
+        mutableStateOf<TextLayoutResult?>(null)
+    }
+
+    var cursorRect by remember {
+        mutableStateOf(Rect.Zero)
+    }
+
+    var startIndex by remember {
+        mutableIntStateOf(0)
+    }
+
+    var endIndex by remember {
+        mutableStateOf(0)
+    }
+
+    LaunchedEffect(textLayout, startIndex, endIndex) {
+        textLayout?.let { textLayout: TextLayoutResult ->
+            boundingRect = textLayout.getBoundingBox(startIndex)
+            cursorRect = textLayout.getCursorRect(startIndex)
+        }
+    }
+
+    Column(
+        modifier = Modifier.padding(16.dp)
+    ) {
+        Spacer(modifier = Modifier.weight(1f))
+
+        Text(
+            "Bounding Rect\n" +
+                    "size: ${boundingRect.size}\n" +
+                    "left: ${boundingRect.left} " +
+                    "top: ${boundingRect.top}, " +
+                    "right: ${boundingRect.right}, " +
+                    "end: ${boundingRect.bottom}"
+        )
+
+        Text(
+            "Cursor Rect\n" +
+                    "size: ${cursorRect.size}\n" +
+                    "left: ${cursorRect.left} " +
+                    "top: ${cursorRect.top}, " +
+                    "right: ${cursorRect.right}, " +
+                    "end: ${cursorRect.bottom}"
+        )
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        Text(
+            modifier = Modifier.fillMaxWidth().drawWithContent {
+                drawContent()
+                drawRect(
+                    color = Color.Red,
+                    topLeft = boundingRect.topLeft,
+                    size = boundingRect.size,
+                    style = Stroke(2.dp.toPx())
+                )
+                drawRect(
+                    color = Color.Blue,
+                    topLeft = cursorRect.topLeft,
+                    size = cursorRect.size,
+                    style = Stroke(
+                        width = 3.dp.toPx(),
+                    )
+                )
+            },
+            onTextLayout = { textLayoutResult: TextLayoutResult ->
+                textLayout = textLayoutResult
+            },
+            fontSize = 16.sp,
+            text = text
+        )
+
+        Row {
+            OutlinedTextField(
+                modifier = Modifier.weight(1f),
+                value = startIndex.toString(),
+                onValueChange = {
+                    it.toIntOrNull()?.let {
+                        startIndex = it
+                    }
+                },
+                label = {
+                    Text("Start Index")
+                },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)
+            )
+
+            Spacer(modifier = Modifier.width(8.dp))
+            OutlinedTextField(
+                modifier = Modifier.weight(1f),
+                value = endIndex.toString(),
+                onValueChange = {
+                    it.toIntOrNull()?.let {
+                        endIndex = it
+                    }
+                },
+                label = {
+                    Text("End Index")
+                },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+            )
+        }
+    }
+}
 
 fun randomColor() = Color(
     Random.nextInt(256),
@@ -53,6 +177,7 @@ fun TexChunkDetectTextPreview() {
 
     val deltas = remember {
         listOf(
+            "Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book. It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged. ",
             "defined ", "by volatility, complexity", ", and accelerating\n",
             "change. Markets evolve ", "faster than planning\n",
             "cycles", "customer", " expectations shift", " continuously."
@@ -121,9 +246,9 @@ fun TexChunkDetectText(text: String) {
         onTextLayout = { textLayout: TextLayoutResult ->
             if (text.isNotEmpty()) {
 
-                val endIndex = if (text[text.lastIndex] == '\n'){
-                    text.lastIndex -1
-                }else {
+                val endIndex = if (text[text.lastIndex] == '\n') {
+                    text.lastIndex - 1
+                } else {
                     text.lastIndex
                 }
 
@@ -142,22 +267,15 @@ fun TexChunkDetectText(text: String) {
 
                 val sameLine = startLine == endLine
 
+                for (line in startLine..endLine) {
+
+                }
+
                 if (sameLine) {
-
-                    val left = textLayout.getBoundingBox(startIndex).left
-                    val right = textLayout.getBoundingBox(endIndex).right
-                    val top = textLayout.getLineTop(startLine)
-                    val bottom = textLayout.getLineBottom(startLine)
-
-                    val rect = Rect(
-                        topLeft = Offset(left, top),
-                        bottomRight = Offset(right, bottom)
-                    )
-                    println("left: $left, right: $right, top:$top, bottom:$bottom, Adding in same line $rect")
+                    val rect = getTextBoundingRect(textLayout, startIndex, endIndex, startLine)
 
                     rectList.add(rect)
                 } else {
-                    println("Next line required... startLine: $startLine, endLine: $endLine")
 
                     val startRect: Rect = textLayout.getCursorRect(startIndex)
                     val startLineEnd = textLayout.getLineRight(startLine)
@@ -181,7 +299,6 @@ fun TexChunkDetectText(text: String) {
 
                     rectList.add(rect)
                     println("ADDING in same line Second rect: $rect")
-
                 }
 
                 startIndex = endIndex + 1
@@ -190,6 +307,24 @@ fun TexChunkDetectText(text: String) {
         text = text,
         fontSize = 14.sp
     )
+}
+
+private fun getTextBoundingRect(
+    textLayout: TextLayoutResult,
+    startIndex: Int,
+    endIndex: Int,
+    line: Int
+): Rect {
+    val left = textLayout.getBoundingBox(startIndex).left
+    val right = textLayout.getBoundingBox(endIndex).right
+    val top = textLayout.getLineTop(line)
+    val bottom = textLayout.getLineBottom(line)
+
+    val rect = Rect(
+        topLeft = Offset(left, top),
+        bottomRight = Offset(right, bottom)
+    )
+    return rect
 }
 
 @Preview
@@ -207,6 +342,7 @@ fun TrailFadeInTextPreview() {
         listOf(
             "defined ", "by volatility, complexity", ", and accelerating\n",
             "change. Markets evolve ", "faster than planning\n",
+            "Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book. It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged. ",
             "cycles", "customer", " expectations shift", " continuously."
         )
     }
@@ -309,9 +445,9 @@ fun TrailFadeInText(text: String) {
         onTextLayout = { textLayout: TextLayoutResult ->
             if (text.isNotEmpty()) {
 
-                val endIndex = if (text[text.lastIndex] == '\n'){
-                    text.lastIndex -1
-                }else {
+                val endIndex = if (text[text.lastIndex] == '\n') {
+                    text.lastIndex - 1
+                } else {
                     text.lastIndex
                 }
 
