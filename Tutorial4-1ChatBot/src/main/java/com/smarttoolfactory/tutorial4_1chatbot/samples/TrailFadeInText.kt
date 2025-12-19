@@ -8,9 +8,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -29,11 +29,13 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.halilibo.richtext.ui.util.detectTapGesturesIf
 import kotlinx.coroutines.delay
 import kotlin.random.Random
 
@@ -64,14 +66,36 @@ fun GetTextBoundingRectPreview() {
         mutableIntStateOf(0)
     }
 
-    var endIndex by remember {
-        mutableStateOf(0)
+    var infoText by remember {
+        mutableStateOf("")
     }
 
-    LaunchedEffect(textLayout, startIndex, endIndex) {
+    LaunchedEffect(textLayout, startIndex) {
         textLayout?.let { textLayout: TextLayoutResult ->
             boundingRect = textLayout.getBoundingBox(startIndex)
             cursorRect = textLayout.getCursorRect(startIndex)
+
+            val lineIndex = textLayout.getLineForOffset(startIndex)
+            val lineStart = textLayout.getLineStart(lineIndex)
+            val lineLeft = textLayout.getLineLeft(lineIndex)
+            val lineEnd = textLayout.getLineStart(lineIndex)
+            val lineRight = textLayout.getLineLeft(lineIndex)
+            val lineTop = textLayout.getLineTop(lineIndex)
+            val lineBottom = textLayout.getLineBottom(lineIndex)
+            val lineBaseline = textLayout.getLineBaseline(lineIndex)
+            val horizontalPosition =
+                textLayout.getHorizontalPosition(offset = startIndex, usePrimaryDirection = false)
+
+            infoText = """
+                lineStart: $lineStart
+                lineLeft: $lineLeft
+                lineEnd: $lineEnd
+                lineRight: $lineRight
+                lineTop: $lineTop
+                lineBottom: $lineBottom
+                lineBaseline: $lineBaseline
+                horizontalPosition: $horizontalPosition
+            """.trimIndent()
         }
     }
 
@@ -80,14 +104,18 @@ fun GetTextBoundingRectPreview() {
     ) {
         Spacer(modifier = Modifier.weight(1f))
 
+        Text(infoText)
+        Spacer(modifier = Modifier.height(8.dp))
         Text(
-            "Bounding Rect\n" +
+            "Char: ${text[startIndex]} -> " +
+                    "Bounding Rect\n" +
                     "size: ${boundingRect.size}\n" +
                     "left: ${boundingRect.left} " +
                     "top: ${boundingRect.top}, " +
                     "right: ${boundingRect.right}, " +
                     "end: ${boundingRect.bottom}"
         )
+        Spacer(modifier = Modifier.height(8.dp))
 
         Text(
             "Cursor Rect\n" +
@@ -101,27 +129,35 @@ fun GetTextBoundingRectPreview() {
         Spacer(modifier = Modifier.height(32.dp))
 
         Text(
-            modifier = Modifier.fillMaxWidth().drawWithContent {
-                drawContent()
-                drawRect(
-                    color = Color.Red,
-                    topLeft = boundingRect.topLeft,
-                    size = boundingRect.size,
-                    style = Stroke(2.dp.toPx())
-                )
-                drawRect(
-                    color = Color.Blue,
-                    topLeft = cursorRect.topLeft,
-                    size = cursorRect.size,
-                    style = Stroke(
-                        width = 3.dp.toPx(),
+            modifier = Modifier.fillMaxWidth()
+                .pointerInput(Unit) {
+                    detectTapGesturesIf { offset ->
+                        textLayout?.let { layoutResult ->
+                            startIndex = layoutResult.getOffsetForPosition(offset)
+                        }
+                    }
+                }
+                .drawWithContent {
+                    drawContent()
+                    drawRect(
+                        color = Color.Red,
+                        topLeft = boundingRect.topLeft,
+                        size = boundingRect.size,
+                        style = Stroke(2.dp.toPx())
                     )
-                )
-            },
+                    drawRect(
+                        color = Color.Blue,
+                        topLeft = cursorRect.topLeft,
+                        size = cursorRect.size,
+                        style = Stroke(
+                            width = 3.dp.toPx(),
+                        )
+                    )
+                },
             onTextLayout = { textLayoutResult: TextLayoutResult ->
                 textLayout = textLayoutResult
             },
-            fontSize = 16.sp,
+            fontSize = 20.sp,
             text = text
         )
 
@@ -140,20 +176,21 @@ fun GetTextBoundingRectPreview() {
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)
             )
 
-            Spacer(modifier = Modifier.width(8.dp))
-            OutlinedTextField(
-                modifier = Modifier.weight(1f),
-                value = endIndex.toString(),
-                onValueChange = {
-                    it.toIntOrNull()?.let {
-                        endIndex = it
-                    }
-                },
-                label = {
-                    Text("End Index")
-                },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-            )
+            Spacer(modifier = Modifier.height(32.dp))
+            OutlinedButton(
+                onClick = {
+                    startIndex++
+                }
+            ) {
+                Text("+")
+            }
+            OutlinedButton(
+                onClick = {
+                    startIndex = (startIndex - 1).coerceAtLeast(0)
+                }
+            ) {
+                Text("-")
+            }
         }
     }
 }
