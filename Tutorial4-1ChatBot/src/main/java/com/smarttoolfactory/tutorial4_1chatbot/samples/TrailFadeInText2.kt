@@ -124,12 +124,10 @@ fun TrailFadeInTextPreview() {
     }
 }
 
-class MyLock
-
 @Composable
 private fun TrailFadeInText(text: String) {
     var startIndex by remember {
-        mutableIntStateOf(0)
+        mutableIntStateOf(text.lastIndex.coerceAtLeast(0))
     }
 
     val rectList = remember {
@@ -225,7 +223,7 @@ private fun TrailFadeInText(text: String) {
                                 animationSpec = tween(1000, easing = LinearEasing)
                             )
                             delay(200)
-//                            rectList.remove(rectWithAnimation)
+                            rectList.remove(rectWithAnimation)
                         } catch (e: CancellationException) {
                             println(
                                 "CANCELED for " +
