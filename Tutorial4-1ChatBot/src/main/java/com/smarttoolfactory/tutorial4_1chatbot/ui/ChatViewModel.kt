@@ -7,11 +7,13 @@ import com.smarttoolfactory.tutorial4_1chatbot.data.ChatCompletionsRequest
 import com.smarttoolfactory.tutorial4_1chatbot.domain.StreamChatCompletionUseCase
 import com.smarttoolfactory.tutorial4_1chatbot.domain.StreamSignal
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.runningFold
@@ -58,7 +60,7 @@ data class Feedback(
 private const val Model = "gpt-4o-mini"
 
 @HiltViewModel
-class ChatSseViewModel @Inject constructor(
+class ChatViewModel @Inject constructor(
     private val streamUseCase: StreamChatCompletionUseCase
 ) : ViewModel() {
 
@@ -104,6 +106,7 @@ class ChatSseViewModel @Inject constructor(
                 .onEach { stream: StreamSignal ->
                     when (stream) {
                         is StreamSignal.Start -> {
+                            println("ChatViewModel Start thread: ${Thread.currentThread().name}")
                             messages.add(initialMessage)
                             _uiState.update {
                                 it.copy(chatStatus = ChatStatus.Thinking)
@@ -122,14 +125,14 @@ class ChatSseViewModel @Inject constructor(
                             currentMessage?.let {
                                 messages[lastIndex] = it.copy(streaming = false)
                             }
-                            println("Completed")
+                            println("ChatViewModel Completed")
                             _uiState.update {
                                 it.copy(chatStatus = ChatStatus.Completed)
                             }
                         }
 
                         is StreamSignal.Failed -> {
-                            println("Failed: ${stream.throwable.message}")
+                            println("ChatViewModel Failed: ${stream.throwable.message}")
                             _uiState.update {
                                 it.copy(chatStatus = ChatStatus.Failed)
                             }
@@ -137,19 +140,21 @@ class ChatSseViewModel @Inject constructor(
 
                     }
                 }
-                .runningFold("") { acc: String, sig: StreamSignal ->
-                    when (sig) {
-                        is StreamSignal.Delta -> acc + sig.text
+                .runningFold("") { acc: String, streamSignal: StreamSignal ->
+                    when (streamSignal) {
+                        is StreamSignal.Delta -> acc + streamSignal.text
                         else -> acc
                     }
                 }
                 .onEach { fullText ->
+                    println("ChatViewModel onEach Thread: ${Thread.currentThread().name}")
                     val lastIndex = messages.lastIndex
                     val currentMessage = messages.getOrNull(lastIndex)
                     currentMessage?.let {
                         messages[lastIndex] = it.copy(text = fullText)
                     }
                 }
+                .flowOn(Dispatchers.Default)
                 .catch { t ->
                     _uiState.update {
                         it.copy(
@@ -158,7 +163,7 @@ class ChatSseViewModel @Inject constructor(
                     }
                 }
                 .onCompletion {
-                    println("onComplete")
+                    println("ChatViewModel onComplete")
                 }
                 .collect()
         }

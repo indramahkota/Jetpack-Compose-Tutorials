@@ -25,6 +25,11 @@ class ChatSseDataSourceImpl @Inject constructor(
         val eventSource: EventSource = factory.newEventSource(
             request,
             object : EventSourceListener() {
+                override fun onOpen(eventSource: EventSource, response: Response) {
+                    super.onOpen(eventSource, response)
+                    println("1️⃣ ChatSseDataSourceImpl onOpen() response: $response, thread: ${Thread.currentThread().name}")
+                    trySend(SseMessage.Opened)
+                }
 
                 override fun onEvent(
                     eventSource: EventSource,
@@ -32,14 +37,19 @@ class ChatSseDataSourceImpl @Inject constructor(
                     type: String?,
                     data: String
                 ) {
-                    println("🔥ChatSseDataSourceImpl onEvent() $id, type: $type\n$data")
+//                    println("🔥ChatSseDataSourceImpl onEvent() id: $id, type: $type\n$data")
                     trySend(SseMessage.Event(type = type, data = data))
                 }
 
-                override fun onFailure(eventSource: EventSource, t: Throwable?, response: Response?) {
+                override fun onFailure(
+                    eventSource: EventSource,
+                    t: Throwable?,
+                    response: Response?
+                ) {
                     println("🚀 ChatSseDataSourceImpl onFailure() ${t?.message}, response: $response")
 
-                    val err: Throwable = t ?: RuntimeException("SSE failure, HTTP=${response?.code}")
+                    val err: Throwable =
+                        t ?: RuntimeException("SSE failure, HTTP=${response?.code}")
                     trySend(SseMessage.Error(err))
                     close(err)
                 }
@@ -53,7 +63,7 @@ class ChatSseDataSourceImpl @Inject constructor(
         )
 
         awaitClose {
-            println("😱Flow awaitClose")
+            println("😱ChatSseDataSourceImpl Flow awaitClose")
             eventSource.cancel()
         }
     }

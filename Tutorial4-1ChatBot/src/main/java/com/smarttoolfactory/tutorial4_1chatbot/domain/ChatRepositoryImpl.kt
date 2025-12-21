@@ -1,16 +1,18 @@
 package com.smarttoolfactory.tutorial4_1chatbot.domain
 
 import com.smarttoolfactory.tutorial4_1chatbot.data.ChatCompletionsRequest
-import com.smarttoolfactory.tutorial4_1chatbot.data.model.ChatCompletionsChunk
 import com.smarttoolfactory.tutorial4_1chatbot.data.OpenAiRequestFactory
-import com.smarttoolfactory.tutorial4_1chatbot.data.sseclient.ChatSseDataSource
+import com.smarttoolfactory.tutorial4_1chatbot.data.model.ChatCompletionsChunk
 import com.smarttoolfactory.tutorial4_1chatbot.data.model.SseMessage
+import com.smarttoolfactory.tutorial4_1chatbot.data.sseclient.ChatSseDataSource
 import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.Moshi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.mapNotNull
 import javax.inject.Inject
+
+private const val Done = "[DONE]"
 
 class ChatStreamRepositoryImpl @Inject constructor(
     private val chatSseDataSource: ChatSseDataSource,
@@ -29,7 +31,7 @@ class ChatStreamRepositoryImpl @Inject constructor(
             .mapNotNull { evt ->
                 val data = evt.data.trim()
 
-                if (data == "[DONE]") return@mapNotNull StreamSignal.Completed()
+                if (data == Done) return@mapNotNull StreamSignal.Completed()
 
                 val chunk = runCatching { adapter.fromJson(data) }.getOrNull()
                     ?: return@mapNotNull null

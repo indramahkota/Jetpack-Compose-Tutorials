@@ -5,16 +5,14 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
-import com.chuckerteam.chucker.api.ChuckerInterceptor
 import com.smarttoolfactory.tutorial4_1chatbot.ui.ChatScreen
-import com.smarttoolfactory.tutorial4_1chatbot.ui.ChatSseViewModel
+import com.smarttoolfactory.tutorial4_1chatbot.ui.ChatViewModel
 import dagger.hilt.android.AndroidEntryPoint
-import okhttp3.OkHttpClient
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
-    private val viewModel: ChatSseViewModel by viewModels()
+    private val viewModel: ChatViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
