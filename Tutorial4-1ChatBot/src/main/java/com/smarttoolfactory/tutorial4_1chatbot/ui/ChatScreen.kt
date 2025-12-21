@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -115,6 +116,7 @@ fun ChatScreen(
 
     Box(
         modifier = Modifier
+            .background(Color.LightGray.copy(alpha = .05f))
             .systemBarsPadding()
             .imePadding()
     ) {
@@ -211,22 +213,22 @@ private fun MessageRow(message: Message) {
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
     ) {
-        Surface(
-            tonalElevation = 2.dp,
-            shape = MaterialTheme.shapes.medium,
-            color = if (isUser) MaterialTheme.colorScheme.onSecondary
-            else MaterialTheme.colorScheme.surface
-        ) {
-            Column(Modifier.padding(16.dp)) {
-                if (isUser) {
-                    BasicRichText(
-                        modifier = Modifier
-                    ) {
-                        Markdown(message.text)
-                    }
-                } else {
-                    val text = message.text
-                    if (text.isNotEmpty()) {
+        val text = message.text
+        if (text.isNotEmpty()) {
+            Surface(
+                tonalElevation = 2.dp,
+                shape = MaterialTheme.shapes.medium,
+                color = if (isUser) MaterialTheme.colorScheme.surface
+                else Color.Transparent
+            ) {
+                Column(Modifier.padding(16.dp)) {
+                    if (isUser) {
+                        BasicRichText(
+                            modifier = Modifier
+                        ) {
+                            Markdown(message.text)
+                        }
+                    } else {
                         BasicRichText(
                             modifier = Modifier.fillMaxWidth()
                         ) {

@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.runningFold
+import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -33,7 +34,6 @@ enum class ChatStatus {
 enum class Role(val value: String) {
     User("user"), Assistant("assistant")
 }
-
 
 data class Chat(
     val title: String? = null,
@@ -106,9 +106,10 @@ class ChatViewModel @Inject constructor(
 
             streamUseCase(chatCompletionsRequest = request)
                 .onEach { stream: StreamSignal ->
+                    println("ChatViewModel First onEach() thread: ${Thread.currentThread().name}")
+
                     when (stream) {
                         is StreamSignal.Start -> {
-                            println("ChatViewModel Start thread: ${Thread.currentThread().name}")
                             _uiState.update {
                                 it.copy(chatStatus = ChatStatus.Thinking)
                             }
