@@ -102,12 +102,13 @@ class ChatViewModel @Inject constructor(
                 text = ""
             )
 
+            messages.add(initialMessage)
+
             streamUseCase(chatCompletionsRequest = request)
                 .onEach { stream: StreamSignal ->
                     when (stream) {
                         is StreamSignal.Start -> {
                             println("ChatViewModel Start thread: ${Thread.currentThread().name}")
-                            messages.add(initialMessage)
                             _uiState.update {
                                 it.copy(chatStatus = ChatStatus.Thinking)
                             }
