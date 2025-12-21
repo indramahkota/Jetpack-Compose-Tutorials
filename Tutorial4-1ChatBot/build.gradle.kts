@@ -84,6 +84,7 @@ dependencies {
     ksp(libs.hilt.compiler)
 
     implementation(libs.moshi)
+    implementation(libs.moshi.kotlin)
     ksp(libs.moshi.kotlin.codegen)
     ksp(libs.kotlin.metadata.jvm)
 

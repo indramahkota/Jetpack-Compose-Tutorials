@@ -1,16 +1,17 @@
 package com.smarttoolfactory.tutorial4_1chatbot.data
 
-// data/openai/OpenAiRequestFactory.kt
 import com.smarttoolfactory.tutorial4_1chatbot.Configs
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.Moshi
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.util.UUID
 import javax.inject.Inject
 
 @JsonClass(generateAdapter = true)
 data class ChatCompletionsRequest(
+    val id: String? = UUID.randomUUID().toString(),
     val model: String? = null,
     val stream: Boolean = true,
     val messages: List<Message>? = null
@@ -29,7 +30,7 @@ class OpenAiRequestFactory @Inject constructor(moshi: Moshi) {
 
     fun chatCompletionsStreamRequest(request: ChatCompletionsRequest): Request {
 
-        val bodyJson = adapter.toJson(request)
+        val bodyJson = adapter.toJson(request.copy(id = null))
         val body = bodyJson.toRequestBody("application/json".toMediaType())
 
         return Request.Builder()

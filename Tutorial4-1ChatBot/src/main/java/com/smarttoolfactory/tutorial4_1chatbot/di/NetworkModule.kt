@@ -8,6 +8,7 @@ import com.smarttoolfactory.tutorial4_1chatbot.data.sseclient.ChatSseDataSourceI
 import com.smarttoolfactory.tutorial4_1chatbot.domain.ChatStreamRepository
 import com.smarttoolfactory.tutorial4_1chatbot.domain.ChatStreamRepositoryImpl
 import com.squareup.moshi.Moshi
+import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -24,7 +25,9 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideMoshi(): Moshi = Moshi.Builder().build()
+    fun provideMoshi(): Moshi = Moshi.Builder()
+        .add(KotlinJsonAdapterFactory())
+        .build()
 
     @Provides
     @Singleton

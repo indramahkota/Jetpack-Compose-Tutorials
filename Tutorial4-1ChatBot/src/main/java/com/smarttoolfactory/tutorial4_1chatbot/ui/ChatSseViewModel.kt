@@ -1,5 +1,6 @@
 package com.smarttoolfactory.tutorial4_1chatbot.ui
 
+import androidx.compose.runtime.mutableStateListOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.smarttoolfactory.tutorial4_1chatbot.data.ChatCompletionsRequest
@@ -19,10 +20,42 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class ChatUiState(
-    val text: String = "",
-    val isStreaming: Boolean = false,
+    val chatStatus: ChatStatus = ChatStatus.Idle,
     val error: String? = null
 )
+
+enum class ChatStatus {
+    Idle, Thinking, Streaming, Completed, Failed
+}
+
+enum class Role(val value: String) {
+    User("user"), Assistant("assistant")
+}
+
+
+data class Chat(
+    val title: String? = null,
+    val messages: List<Message>? = null
+)
+
+data class Message(
+    val id: String,
+    val role: Role,
+    val streaming: Boolean,
+    val text: String,
+    val feedback: Feedback? = null
+)
+
+data class Feedback(
+    val text: String? = null,
+    val reaction: Reaction? = null
+) {
+    enum class Reaction {
+        ThumbsUp, ThumbsDown
+    }
+}
+
+private const val Model = "gpt-4o-mini"
 
 @HiltViewModel
 class ChatSseViewModel @Inject constructor(
@@ -32,41 +65,100 @@ class ChatSseViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
 
-    fun start(prompt: String) {
-        viewModelScope.launch {
-            _uiState.value = ChatUiState(isStreaming = true)
+    val messages = mutableStateListOf<Message>()
 
-            streamUseCase(
-                ChatCompletionsRequest(
-                    model = "",
-                    stream = true,
-                    messages = listOf(
-                        ChatCompletionsRequest.Message(
-                            role = "user",
-                            content = prompt
-                        )
+    fun sendMessage(prompt: String) {
+        _uiState.update {
+            it.copy(chatStatus = ChatStatus.Thinking)
+        }
+        viewModelScope.launch {
+
+            val request = ChatCompletionsRequest(
+                model = Model,
+                stream = true,
+                messages = listOf(
+                    ChatCompletionsRequest.Message(
+                        role = Role.User.value,
+                        content = prompt
                     )
                 )
             )
-                .runningFold("") { acc, sig ->
+
+            val userMessage = Message(
+                id = request.id.orEmpty(),
+                role = Role.User,
+                streaming = false,
+                text = prompt
+            )
+
+            messages.add(userMessage)
+
+            val initialMessage = Message(
+                id = userMessage.id,
+                role = Role.Assistant,
+                streaming = true,
+                text = ""
+            )
+
+            streamUseCase(chatCompletionsRequest = request)
+                .onEach { stream: StreamSignal ->
+                    when (stream) {
+                        is StreamSignal.Start -> {
+                            messages.add(initialMessage)
+                            _uiState.update {
+                                it.copy(chatStatus = ChatStatus.Thinking)
+                            }
+                        }
+
+                        is StreamSignal.Delta -> {
+                            _uiState.update {
+                                it.copy(chatStatus = ChatStatus.Streaming)
+                            }
+                        }
+
+                        is StreamSignal.Completed -> {
+                            val lastIndex = messages.lastIndex
+                            val currentMessage = messages.getOrNull(lastIndex)
+                            currentMessage?.let {
+                                messages[lastIndex] = it.copy(streaming = false)
+                            }
+                            println("Completed")
+                            _uiState.update {
+                                it.copy(chatStatus = ChatStatus.Completed)
+                            }
+                        }
+
+                        is StreamSignal.Failed -> {
+                            println("Failed: ${stream.throwable.message}")
+                            _uiState.update {
+                                it.copy(chatStatus = ChatStatus.Failed)
+                            }
+                        }
+
+                    }
+                }
+                .runningFold("") { acc: String, sig: StreamSignal ->
                     when (sig) {
                         is StreamSignal.Delta -> acc + sig.text
                         else -> acc
                     }
                 }
                 .onEach { fullText ->
-                    _uiState.update { it.copy(text = fullText, isStreaming = true, error = null) }
+                    val lastIndex = messages.lastIndex
+                    val currentMessage = messages.getOrNull(lastIndex)
+                    currentMessage?.let {
+                        messages[lastIndex] = it.copy(text = fullText)
+                    }
                 }
                 .catch { t ->
                     _uiState.update {
                         it.copy(
-                            isStreaming = false,
                             error = t.message ?: "Unknown error"
                         )
                     }
                 }
                 .onCompletion {
-                    _uiState.update { it.copy(isStreaming = false) }
+                    println("onComplete")
                 }
                 .collect()
         }

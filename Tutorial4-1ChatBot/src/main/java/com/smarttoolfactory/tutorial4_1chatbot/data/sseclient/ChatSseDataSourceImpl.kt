@@ -32,16 +32,20 @@ class ChatSseDataSourceImpl @Inject constructor(
                     type: String?,
                     data: String
                 ) {
+                    println("🔥ChatSseDataSourceImpl onEvent() $id, type: $type\n$data")
                     trySend(SseMessage.Event(type = type, data = data))
                 }
 
                 override fun onFailure(eventSource: EventSource, t: Throwable?, response: Response?) {
+                    println("🚀 ChatSseDataSourceImpl onFailure() ${t?.message}, response: $response")
+
                     val err: Throwable = t ?: RuntimeException("SSE failure, HTTP=${response?.code}")
                     trySend(SseMessage.Error(err))
                     close(err)
                 }
 
                 override fun onClosed(eventSource: EventSource) {
+                    println("😵‍💫 ChatSseDataSourceImpl onClosed()")
                     trySend(SseMessage.Closed)
                     close()
                 }
@@ -49,7 +53,7 @@ class ChatSseDataSourceImpl @Inject constructor(
         )
 
         awaitClose {
-            println("Close")
+            println("😱Flow awaitClose")
             eventSource.cancel()
         }
     }
