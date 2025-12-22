@@ -1,9 +1,5 @@
 package com.smarttoolfactory.tutorial4_1chatbot.ui
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,17 +14,10 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDownward
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.FloatingActionButtonDefaults
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -41,9 +30,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
@@ -65,7 +54,7 @@ fun ChatScreen(
 ) {
     val uiState by chatViewModel.uiState.collectAsStateWithLifecycle()
 
-    val messages = chatViewModel.messages
+    val messages: SnapshotStateList<Message> = chatViewModel.messages
     val listState = rememberLazyListState()
 
     var input by remember { mutableStateOf("") }
@@ -84,25 +73,19 @@ fun ChatScreen(
         }
     }
 
-    // TODO Fix scrolling when new deltas are appended, user touched button or scrolls up
-    // while new deltas are appended
     val coroutineScope = rememberCoroutineScope()
 
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) {
-            listState.animateScrollToItem(
-                index = messages.lastIndex,
-                scrollOffset = Int.MAX_VALUE
-            )
+    val isAtBottom by remember {
+        derivedStateOf {
+            val layout = listState.layoutInfo
+            val lastVisible = layout.visibleItemsInfo.lastOrNull()?.index
+            lastVisible == layout.totalItemsCount - 1
         }
     }
 
-    LaunchedEffect(uiState.chatStatus) {
-        if (uiState.chatStatus == ChatStatus.Streaming) {
-            listState.animateScrollToItem(
-                index = messages.lastIndex,
-                scrollOffset = Int.MAX_VALUE
-            )
+    LaunchedEffect(messages.lastOrNull()?.text) {
+        if (isAtBottom && messages.isNotEmpty()) {
+            listState.scrollToItem(messages.lastIndex)
         }
     }
 
@@ -149,6 +132,7 @@ fun ChatScreen(
                 modifier = Modifier
                     .padding(bottom = 16.dp, start = 16.dp, end = 16.dp)
                     .fillMaxWidth(),
+                focusRequester = focusRequester,
                 value = input.take(200).replace(
                     Regex("[\\x{1F300}-\\x{1FAFF}\\x{2600}-\\x{26FF}]"),
                     ""
