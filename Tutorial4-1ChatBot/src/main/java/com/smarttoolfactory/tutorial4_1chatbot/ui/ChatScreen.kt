@@ -1,6 +1,7 @@
 package com.smarttoolfactory.tutorial4_1chatbot.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,6 +21,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
@@ -30,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,11 +45,11 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.halilibo.richtext.commonmark.Markdown
 import com.halilibo.richtext.ui.BasicRichText
-import com.halilibo.richtext.ui.util.detectTapGesturesIf
 import com.smarttoolfactory.tutorial4_1chatbot.ui.component.ChatTextField
 import com.smarttoolfactory.tutorial4_1chatbot.ui.component.JumpToBottomButton
 import kotlinx.coroutines.android.awaitFrame
 import kotlinx.coroutines.launch
+import kotlin.math.absoluteValue
 
 @Composable
 fun ChatScreen(
@@ -75,16 +78,62 @@ fun ChatScreen(
 
     val coroutineScope = rememberCoroutineScope()
 
-    val isAtBottom by remember {
-        derivedStateOf {
-            val layout = listState.layoutInfo
-            val lastVisible = layout.visibleItemsInfo.lastOrNull()?.index
-            lastVisible == layout.totalItemsCount - 1
+
+    var autScroll by remember {
+        mutableStateOf(false)
+    }
+
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            listState.layoutInfo
+        }.collect {
+            val layoutInfo = listState.layoutInfo
+
+            if (layoutInfo.visibleItemsInfo.isNotEmpty()) {
+                val totalItemsCount = layoutInfo.totalItemsCount
+                val viewportEndOffset = layoutInfo.viewportEndOffset
+                val viewPortHeight = layoutInfo.viewportSize.height
+
+                val lastItem = layoutInfo.visibleItemsInfo.last()
+                val lastVisibleIndex = lastItem.index
+                val lastVisibleOffset = lastItem.offset
+                val lastHeight = lastItem.size
+
+                val scrollInProgress = listState.isScrollInProgress
+
+                println(
+                    "totalItemsCount: $totalItemsCount, " +
+                            "viewport EndOffset: $viewportEndOffset, height: $viewPortHeight" +
+                            "index: $lastVisibleIndex, " +
+                            "visibleOffset: $lastVisibleOffset, " +
+                            "height $lastHeight"
+                )
+
+                // last item is visible
+                autScroll = if (uiState.chatStatus != ChatStatus.Streaming) {
+                    false
+                } else if (lastVisibleIndex == totalItemsCount - 1 && scrollInProgress.not()) {
+
+                    val viewportBottom = layoutInfo.viewportEndOffset
+                    val itemBottom = lastItem.offset + lastItem.size
+
+                    val diff = (itemBottom - viewportBottom).absoluteValue
+                    if (diff < 100) {
+                        true
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            }
         }
     }
 
+
+
     LaunchedEffect(messages.lastOrNull()?.text) {
-        if (isAtBottom && messages.isNotEmpty()) {
+        if (autScroll && messages.isNotEmpty()) {
             listState.scrollToItem(messages.lastIndex)
         }
     }
@@ -99,20 +148,26 @@ fun ChatScreen(
             Modifier
                 .fillMaxSize()
                 .pointerInput(Unit) {
-                    detectTapGesturesIf(
-                        predicate = {
-                            isKeyboardOpen
-                        },
+                    detectTapGestures(
                         onTap = {
-                            focusManager.clearFocus()
-                            val text = input.trim()
-                            if (text.isNotEmpty()) {
-                                chatViewModel.sendMessage(text)
-                                input = ""
+                            if (isKeyboardOpen) {
+                                focusManager.clearFocus()
+                                val text = input.trim()
+                                if (text.isNotEmpty()) {
+                                    chatViewModel.sendMessage(text)
+                                    input = ""
+                                }
                             }
+
                         }
                     )
-                }) {
+                }
+        ) {
+
+            Text(
+                "autScroll: $autScroll, state: ${uiState.chatStatus}"
+            )
+
             LazyColumn(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
                 state = listState,
@@ -162,7 +217,10 @@ fun ChatScreen(
             enabled = jumpToBottomButtonEnabled,
             onClick = {
                 coroutineScope.launch {
-                    listState.scrollToItem(messages.lastIndex)
+                    listState.scrollToItem(
+                        index = messages.lastIndex,
+                        scrollOffset = Int.MAX_VALUE
+                    )
                 }
             }
         )

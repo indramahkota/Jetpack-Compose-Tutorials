@@ -120,14 +120,14 @@ internal fun ChatTextField(
         shadowElevation = 1.dp
     ) {
         Row(
-            modifier = Modifier.padding(vertical = 4.dp),
+            modifier = Modifier.padding(vertical = 8.dp),
             verticalAlignment = Alignment.Bottom
         ) {
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .heightIn(min = 40.dp)
-                    .padding(start = 16.dp),
+                    .padding(start = 24.dp),
                 contentAlignment = Alignment.CenterStart
             ) {
                 BasicTextField(
@@ -135,7 +135,7 @@ internal fun ChatTextField(
                         .fillMaxWidth()
                         .focusRequester(focusRequester),
                     textStyle = TextStyle(
-                        fontSize = 14.sp
+                        fontSize = 18.sp
                     ),
                     enabled = enabled,
                     value = value,
