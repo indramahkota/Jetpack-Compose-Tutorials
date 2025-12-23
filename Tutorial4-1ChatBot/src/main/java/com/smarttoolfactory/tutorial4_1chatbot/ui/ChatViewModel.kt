@@ -8,11 +8,16 @@ import com.smarttoolfactory.tutorial4_1chatbot.domain.StreamChatCompletionUseCas
 import com.smarttoolfactory.tutorial4_1chatbot.domain.StreamSignal
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.flatMapConcat
+import kotlinx.coroutines.flow.flatMapMerge
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onEach
@@ -106,8 +111,6 @@ class ChatViewModel @Inject constructor(
 
             streamUseCase(chatCompletionsRequest = request)
                 .onEach { stream: StreamSignal ->
-                    println("ChatViewModel First onEach() thread: ${Thread.currentThread().name}")
-
                     when (stream) {
                         is StreamSignal.Start -> {
                             _uiState.update {
@@ -142,18 +145,34 @@ class ChatViewModel @Inject constructor(
 
                     }
                 }
-                .runningFold("") { acc: String, streamSignal: StreamSignal ->
-                    when (streamSignal) {
-                        is StreamSignal.Delta -> acc + streamSignal.text
-                        else -> acc
-                    }
-                }
-                .onEach { fullText ->
-                    println("ChatViewModel onEach Thread: ${Thread.currentThread().name}")
-                    val lastIndex = messages.lastIndex
-                    val currentMessage = messages.getOrNull(lastIndex)
-                    currentMessage?.let {
-                        messages[lastIndex] = it.copy(text = fullText)
+//                .runningFold("") { acc: String, streamSignal: StreamSignal ->
+//                    when (streamSignal) {
+//                        is StreamSignal.Delta -> acc + streamSignal.text
+//                        else -> acc
+//                    }
+//                }
+//                .onEach { fullText ->
+//                    val lastIndex = messages.lastIndex
+//                    val currentMessage = messages.getOrNull(lastIndex)
+//                    currentMessage?.let {
+//                        messages[lastIndex] = it.copy(text = fullText)
+//                    }
+//                }
+
+//                .flatMapConcat {
+//                    flow {
+//                        delay(30)
+//                        emit(it)
+//                    }
+//                }
+                .onEach { streamSignal: StreamSignal ->
+                    if (streamSignal is StreamSignal.Delta) {
+                        val lastIndex = messages.lastIndex
+                        val currentMessage = messages.getOrNull(lastIndex)
+                        val text = streamSignal.text
+                        currentMessage?.let {
+                            messages[lastIndex] = it.copy(text = it.text + text)
+                        }
                     }
                 }
                 .flowOn(Dispatchers.Default)

@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
@@ -48,8 +49,51 @@ import com.halilibo.richtext.ui.BasicRichText
 import com.smarttoolfactory.tutorial4_1chatbot.ui.component.ChatTextField
 import com.smarttoolfactory.tutorial4_1chatbot.ui.component.JumpToBottomButton
 import kotlinx.coroutines.android.awaitFrame
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
-import kotlin.math.absoluteValue
+import kotlin.math.abs
+
+private fun LazyListState.isAtBottomPx(thresholdPx: Int = 6): Boolean {
+    val info = layoutInfo
+    val lastVisible = info.visibleItemsInfo.lastOrNull() ?: return false
+    val lastIndex = info.totalItemsCount - 1
+    if (lastVisible.index != lastIndex) return false
+
+    val viewportBottom = info.viewportEndOffset
+    val itemBottom = lastVisible.offset + lastVisible.size
+    return abs(itemBottom - viewportBottom) <= thresholdPx
+}
+
+private fun LazyListState.isNearBottom(itemsThreshold: Int = 1): Boolean {
+    val info = layoutInfo
+    val lastVisibleIndex = info.visibleItemsInfo.lastOrNull()?.index ?: return false
+    val lastIndex = info.totalItemsCount - 1
+    return (lastIndex - lastVisibleIndex) <= itemsThreshold
+}
+
+
+/**
+ * Emits Unit periodically; used to "pin" during streaming with throttling.
+ */
+private fun tickerFlow(periodMs: Long): Flow<Unit> = flow {
+    while (true) {
+        emit(Unit)
+        delay(periodMs)
+    }
+}
+
+sealed interface ScrollRequest {
+    data object ForceToBottom : ScrollRequest   // user sent, jump button
+    data object PinToBottom : ScrollRequest     // streaming pin tick
+    data object MaybeToBottom : ScrollRequest   // new message arrived if allowed
+}
+
 
 @Composable
 fun ChatScreen(
@@ -70,72 +114,86 @@ fun ChatScreen(
         focusRequester.requestFocus()
     }
 
+    val coroutineScope = rememberCoroutineScope()
+    val density = LocalDensity.current
+    val thresholdPx = with(density) {
+        100.dp.roundToPx()
+    }
+
     val jumpToBottomButtonEnabled by remember {
         derivedStateOf {
-            listState.canScrollForward && isKeyboardOpen.not()
-        }
-    }
+            val info = listState.layoutInfo
+            val lastVisible = info.visibleItemsInfo.lastOrNull()
 
-    val coroutineScope = rememberCoroutineScope()
+            if (lastVisible == null) {
+                false
+            } else {
+                val viewportBottom = info.viewportEndOffset
+                val itemBottom = lastVisible.offset + lastVisible.size
+                val isAwayFromBottom = abs(itemBottom - viewportBottom) > thresholdPx
 
-
-    var autScroll by remember {
-        mutableStateOf(false)
-    }
-
-    LaunchedEffect(listState) {
-        snapshotFlow {
-            listState.layoutInfo
-        }.collect {
-            val layoutInfo = listState.layoutInfo
-
-            if (layoutInfo.visibleItemsInfo.isNotEmpty()) {
-                val totalItemsCount = layoutInfo.totalItemsCount
-                val viewportEndOffset = layoutInfo.viewportEndOffset
-                val viewPortHeight = layoutInfo.viewportSize.height
-
-                val lastItem = layoutInfo.visibleItemsInfo.last()
-                val lastVisibleIndex = lastItem.index
-                val lastVisibleOffset = lastItem.offset
-                val lastHeight = lastItem.size
-
-                val scrollInProgress = listState.isScrollInProgress
-
-                println(
-                    "totalItemsCount: $totalItemsCount, " +
-                            "viewport EndOffset: $viewportEndOffset, height: $viewPortHeight" +
-                            "index: $lastVisibleIndex, " +
-                            "visibleOffset: $lastVisibleOffset, " +
-                            "height $lastHeight"
-                )
-
-                // last item is visible
-                autScroll = if (uiState.chatStatus != ChatStatus.Streaming) {
-                    false
-                } else if (lastVisibleIndex == totalItemsCount - 1 && scrollInProgress.not()) {
-
-                    val viewportBottom = layoutInfo.viewportEndOffset
-                    val itemBottom = lastItem.offset + lastItem.size
-
-                    val diff = (itemBottom - viewportBottom).absoluteValue
-                    if (diff < 100) {
-                        true
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                }
+                listState.canScrollForward && isAwayFromBottom && isKeyboardOpen.not()
             }
         }
     }
 
+    var autoScrollEnabled by remember { mutableStateOf(true) }
 
+    val isNearBottom by remember {
+        derivedStateOf { listState.isNearBottom(itemsThreshold = 1) }
+    }
+    val isAtBottom by remember {
+        derivedStateOf { listState.isAtBottomPx(thresholdPx = 300) }
+    }
 
-    LaunchedEffect(messages.lastOrNull()?.text) {
-        if (autScroll && messages.isNotEmpty()) {
-            listState.scrollToItem(messages.lastIndex)
+// If user scrolls while away from bottom, treat as "reading history"
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.isScrollInProgress }
+            .distinctUntilChanged()
+            .filter { it } // when scrolling starts
+            .collect {
+                if (!isNearBottom) autoScrollEnabled = false
+            }
+    }
+
+    // If user comes back to bottom, re-enable
+    LaunchedEffect(isAtBottom) {
+        if (isAtBottom) autoScrollEnabled = true
+    }
+
+    LaunchedEffect(messages.size) {
+        if (messages.isEmpty()) return@LaunchedEffect
+        if (autoScrollEnabled && isNearBottom) {
+            listState.scrollToItem(messages.lastIndex, Int.MAX_VALUE)
         }
+    }
+
+    LaunchedEffect(Unit) {
+        snapshotFlow { isAtBottom to listState.isScrollInProgress }
+            .distinctUntilChanged()
+            .collect { (atBottom, inProgress) ->
+                if (atBottom && !inProgress) {
+                    autoScrollEnabled = true
+                }
+            }
+    }
+
+    LaunchedEffect(uiState.chatStatus) {
+        if (uiState.chatStatus != ChatStatus.Streaming) return@LaunchedEffect
+
+        snapshotFlow { autoScrollEnabled && isAtBottom && !listState.isScrollInProgress }
+            .distinctUntilChanged()
+            .flatMapLatest { shouldPin ->
+                if (shouldPin) tickerFlow(100) else emptyFlow()
+            }
+            .collect {
+                if (messages.isNotEmpty()) {
+                    try {
+                        listState.scrollToItem(messages.lastIndex, Int.MAX_VALUE)
+                    } catch (e: Exception) {
+                    }
+                }
+            }
     }
 
     Box(
@@ -165,7 +223,11 @@ fun ChatScreen(
         ) {
 
             Text(
-                "autScroll: $autScroll, state: ${uiState.chatStatus}"
+                "autoScroll: $autoScrollEnabled\n" +
+                        "isNearBottom: $isNearBottom\n" +
+                        "isAtBottom: $isAtBottom\n" +
+                        "jumpToBottomButtonEnabled: $jumpToBottomButtonEnabled\n" +
+                        " state: ${uiState.chatStatus}"
             )
 
             LazyColumn(
@@ -188,15 +250,9 @@ fun ChatScreen(
                     .padding(bottom = 16.dp, start = 16.dp, end = 16.dp)
                     .fillMaxWidth(),
                 focusRequester = focusRequester,
-                value = input.take(200).replace(
-                    Regex("[\\x{1F300}-\\x{1FAFF}\\x{2600}-\\x{26FF}]"),
-                    ""
-                ),
+                value = input,
                 onValueChange = {
-                    input = it.take(200).replace(
-                        Regex("[\\x{1F300}-\\x{1FAFF}\\x{2600}-\\x{26FF}]"),
-                        ""
-                    )
+                    input = it
                 },
                 onClick = {
                     focusManager.clearFocus()
