@@ -8,21 +8,14 @@ import com.smarttoolfactory.tutorial4_1chatbot.domain.StreamChatCompletionUseCas
 import com.smarttoolfactory.tutorial4_1chatbot.domain.StreamSignal
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.flatMapConcat
-import kotlinx.coroutines.flow.flatMapMerge
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.flow.runningFold
-import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -32,9 +25,17 @@ data class ChatUiState(
     val error: String? = null
 )
 
-enum class ChatStatus {
-    Idle, Thinking, Streaming, Completed, Failed
+enum class ChatStatus(val order: Int) {
+    Idle(0),
+    BeforePrompt(1),
+    AfterPrompt(2),
+    Thinking(3),
+    Streaming(4),
+    Completed(5),
+    Failed(6)
 }
+
+fun ChatStatus.greaterThan(other: ChatStatus): Boolean = this.order > other.order
 
 enum class Role(val value: String) {
     User("user"), Assistant("assistant")
@@ -79,7 +80,6 @@ class ChatViewModel @Inject constructor(
             it.copy(chatStatus = ChatStatus.Thinking)
         }
         viewModelScope.launch {
-
             val request = ChatCompletionsRequest(
                 model = Model,
                 stream = true,
@@ -91,6 +91,10 @@ class ChatViewModel @Inject constructor(
                 )
             )
 
+            _uiState.update {
+                it.copy(chatStatus = ChatStatus.BeforePrompt)
+            }
+
             val userMessage = Message(
                 id = request.id.orEmpty(),
                 role = Role.User,
@@ -100,13 +104,16 @@ class ChatViewModel @Inject constructor(
 
             messages.add(userMessage)
 
+            _uiState.update {
+                it.copy(chatStatus = ChatStatus.AfterPrompt)
+            }
+
             val initialMessage = Message(
                 id = userMessage.id,
                 role = Role.Assistant,
                 streaming = true,
                 text = ""
             )
-
             messages.add(initialMessage)
 
             streamUseCase(chatCompletionsRequest = request)
