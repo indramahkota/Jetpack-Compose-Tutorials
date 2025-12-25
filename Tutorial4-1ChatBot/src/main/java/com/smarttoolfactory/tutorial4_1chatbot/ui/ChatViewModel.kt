@@ -36,6 +36,7 @@ enum class ChatStatus(val order: Int) {
 }
 
 fun ChatStatus.greaterThan(other: ChatStatus): Boolean = this.order > other.order
+fun ChatStatus.lesserThan(other: ChatStatus): Boolean = this.order < other.order
 
 enum class Role(val value: String) {
     User("user"), Assistant("assistant")
