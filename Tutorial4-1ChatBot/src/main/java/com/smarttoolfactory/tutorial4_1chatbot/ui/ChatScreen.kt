@@ -3,6 +3,7 @@
 package com.smarttoolfactory.tutorial4_1chatbot.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -75,7 +77,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
-val contentPadding = 12.dp
+val contentPaddingTop = 12.dp
 val itemSpacing = 16.dp
 val backgroundColor = Color(0xFFFAFAFA)
 
@@ -112,6 +114,15 @@ fun ChatScreen(
     val statusBarHeight = WindowInsets.statusBars.getTop(density)
     val topAppbarHeight = 48.dp + with(density) {
         statusBarHeight.toDp()
+    }
+
+    val navBarHeight = WindowInsets.navigationBars.getBottom(density)
+
+    // Height of Input area, its bottom padding and navigation bar heigh
+    // This is the bottom of LazyColumn or last item minimum to keep user prompt on top
+    // when it's entered
+    val contentPaddingBottom = 56.dp + 16.dp + with(density) {
+        navBarHeight.toDp()
     }
 
     val uiState by chatViewModel.uiState.collectAsStateWithLifecycle()
@@ -198,7 +209,7 @@ fun ChatScreen(
 
     // After user prompt message is added, scroll it to top after calculating difference between
     // prompt's bottom and viewports end offset(position before bottom padding)
-    LaunchedEffect(messages.size, chatStatus, minHeightOfLastItem) {
+    LaunchedEffect(messages.size, minHeightOfLastItem) {
         if (chatStatus == ChatStatus.AfterPrompt && messages.size > 2 && minHeightOfLastItem > 0.dp) {
             val lastIndexToScroll = (messages.lastIndex - 1).coerceIn(0, messages.lastIndex)
             try {
@@ -209,6 +220,7 @@ fun ChatScreen(
                     index = lastIndexToScroll,
                     scrollOffset = topAppbarHeightInPx
                 )
+                println("SCROLL is complete $minHeightOfLastItem, status: $chatStatus, last indx: ${messages.size}")
             } catch (e: Exception) {
                 println("Exception ${e.message}")
             }
@@ -253,8 +265,8 @@ fun ChatScreen(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
                 state = listState,
                 contentPadding = PaddingValues(
-                    top = contentPadding + topAppbarHeight,
-                    bottom = contentPadding
+                    top = contentPaddingTop + topAppbarHeight,
+                    bottom = contentPaddingBottom
                 ),
                 verticalArrangement = Arrangement.spacedBy(itemSpacing)
             ) {
@@ -276,7 +288,7 @@ fun ChatScreen(
                                     val height = bounds.height
 
                                     minHeightOfLastItem = with(density) {
-                                        (viewportEndOffset - height).toDp() - contentPadding - itemSpacing
+                                        (viewportEndOffset - height).toDp() - itemSpacing - contentPaddingBottom
                                     }
 
                                     println(
@@ -288,6 +300,7 @@ fun ChatScreen(
                                 }
                         } else if (index == messages.lastIndex && msg.role != Role.User && messages.size > 2) {
                             Modifier.heightIn(min = minHeightOfLastItem)
+//                                .border(2.dp, Color.Black)
                         } else {
                             Modifier
                         }
@@ -305,6 +318,7 @@ fun ChatScreen(
 
         TopAppBar(
             modifier = Modifier.height(topAppbarHeight)
+//                .border(2.dp, Color.Red)
                 .background(
                     brush = Brush.verticalGradient(
                         colors = listOf(
@@ -331,9 +345,20 @@ fun ChatScreen(
             )
         )
 
+
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+//                .border(5.dp, Color.Magenta)
+                .height(contentPaddingBottom)
+//                .navigationBarsPadding()
+                .fillMaxWidth()
+        )
+
         InputArea(
             modifier = Modifier
                 .align(Alignment.BottomStart)
+//                .border(2.dp, Color.Cyan)
                 .navigationBarsPadding()
                 .background(
                     brush = Brush.verticalGradient(
