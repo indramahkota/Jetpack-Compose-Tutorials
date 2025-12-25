@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.halilibo.richtext.commonmark.CommonmarkAstNodeParser
+import com.halilibo.richtext.commonmark.Markdown
 import com.halilibo.richtext.markdown.AstBlockNodeComposer
 import com.halilibo.richtext.markdown.BasicMarkdown
 import com.halilibo.richtext.markdown.node.AstBlockNodeType
@@ -48,8 +49,11 @@ import com.halilibo.richtext.markdown.node.AstTableHeader
 import com.halilibo.richtext.markdown.node.AstTableRoot
 import com.halilibo.richtext.markdown.node.AstTableRow
 import com.halilibo.richtext.markdown.node.AstText
+import com.halilibo.richtext.ui.BasicRichText
 import com.halilibo.richtext.ui.RichTextScope
+import com.halilibo.richtext.ui.RichTextStyle
 import com.halilibo.richtext.ui.Table
+import com.halilibo.richtext.ui.TableStyle
 import com.halilibo.richtext.ui.string.InlineContent
 import com.halilibo.richtext.ui.string.RichTextString
 import com.halilibo.richtext.ui.string.Text
@@ -109,6 +113,18 @@ fun ChatGptLikeMarkdownTablePreview() {
     Column(
         modifier = Modifier.padding(16.dp)
     ) {
+
+        BasicRichText(
+            modifier = Modifier.padding(16.dp).border(2.dp, Color.Black, RoundedCornerShape(16.dp)),
+            style = RichTextStyle(
+                tableStyle = TableStyle(
+                    borderColor = Color.Transparent
+                )
+            )
+        ) {
+            Markdown(markdownTable)
+        }
+
         ChatGptLikeMarkdownTable(
             markdown = markdownTable
         )

@@ -135,11 +135,6 @@ private fun TrailFadeInText(text: String) {
     }
 
     val scope = rememberCoroutineScope()
-
-    val animatable = remember {
-        Animatable(0f)
-    }
-
     Text(
         modifier = Modifier
             .fillMaxWidth()

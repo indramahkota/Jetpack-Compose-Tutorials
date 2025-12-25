@@ -9,6 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -19,7 +20,8 @@ import com.halilibo.richtext.markdown.BasicMarkdown
 import com.halilibo.richtext.markdown.node.AstNode
 import com.halilibo.richtext.ui.BasicRichText
 import com.halilibo.richtext.ui.RichTextScope
-
+import com.halilibo.richtext.ui.RichTextStyle
+import com.halilibo.richtext.ui.RichTextThemeProvider
 import dev.jeziellago.compose.markdowntext.MarkdownText
 import io.noties.markwon.Markwon
 import io.noties.markwon.ext.tables.TablePlugin
@@ -91,11 +93,28 @@ fun MarkdownTextSample() {
             color = Color.Red,
             fontWeight = FontWeight.SemiBold
         )
-        BasicRichText(
-            modifier = Modifier.padding(16.dp)
+
+
+        RichTextThemeProvider(
+            textStyleProvider = {
+
+                TextStyle(
+                    color = Color.Red
+                )
+            }
         ) {
-            Markdown(markdownText)
+            BasicRichText(
+                modifier = Modifier.padding(vertical = 16.dp),
+                style = RichTextStyle(
+                  headingStyle = { index: Int, textStyle: TextStyle ->
+                      textStyle.copy(color = Color.Gray)
+                  }
+                )
+            ) {
+                Markdown(markdownText)
+            }
         }
+
 
         BasicRichText(
             modifier = Modifier.padding(16.dp)
