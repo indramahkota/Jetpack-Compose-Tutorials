@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -32,8 +31,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -63,10 +60,9 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.halilibo.richtext.commonmark.Markdown
-import com.halilibo.richtext.ui.BasicRichText
-import com.smarttoolfactory.tutorial4_1chatbot.ui.component.ChatTextField
-import com.smarttoolfactory.tutorial4_1chatbot.ui.component.JumpToBottomButton
+import com.smarttoolfactory.tutorial4_1chatbot.ui.component.button.JumpToBottomButton
+import com.smarttoolfactory.tutorial4_1chatbot.ui.component.input.ChatTextField
+import com.smarttoolfactory.tutorial4_1chatbot.ui.component.message.MessageRow
 import kotlinx.coroutines.android.awaitFrame
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -272,8 +268,13 @@ fun ChatScreen(
             ) {
                 itemsIndexed(
                     items = messages,
-                    // TODO Add unique keys to user and assistant messages
-//                    key = { it.id }
+                    // TODO Add content type
+//                     contentType = { index: Int, type: Message ->
+//
+//                     },
+                    key = { _: Int, message: Message ->
+                        message.uniqueId
+                    }
                 ) { index: Int, msg: Message ->
                     val modifier =
                         if (index == messages.lastIndex - 1 && chatStatus == ChatStatus.AfterPrompt) {
@@ -318,17 +319,8 @@ fun ChatScreen(
 
         TopAppBar(
             modifier = Modifier.height(topAppbarHeight)
-//                .border(2.dp, Color.Red)
-                .background(
-                    brush = Brush.verticalGradient(
-                        colors = listOf(
-                            backgroundColor.copy(alpha = .9f),
-                            backgroundColor.copy(alpha = .8f),
-                            backgroundColor.copy(alpha = .7f),
-                            backgroundColor.copy(alpha = .5f)
-                        )
-                    )
-                ),
+                .border(2.dp, Color.Red)
+                .background(brush = topAppbarBrush),
             title = {},
             actions = {
                 IconButton(
@@ -345,7 +337,6 @@ fun ChatScreen(
             )
         )
 
-
         Box(
             modifier = Modifier
                 .align(Alignment.BottomStart)
@@ -361,13 +352,7 @@ fun ChatScreen(
 //                .border(2.dp, Color.Cyan)
                 .navigationBarsPadding()
                 .background(
-                    brush = Brush.verticalGradient(
-                        colors = listOf(
-                            backgroundColor.copy(alpha = .7f),
-                            backgroundColor.copy(alpha = .8f),
-                            backgroundColor.copy(alpha = .9f)
-                        )
-                    )
+                    brush = inputBrush
                 )
                 .padding(bottom = 16.dp, start = 16.dp, end = 16.dp)
                 .fillMaxWidth(),
@@ -427,49 +412,28 @@ private fun InputArea(
 }
 
 @Composable
-private fun MessageRow(
-    modifier: Modifier = Modifier,
-    message: Message
-) {
-    val isUser = message.role == Role.User
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
-    ) {
-        val text = message.text
-        if (text.isNotEmpty()) {
-            Surface(
-                tonalElevation = 2.dp,
-                shape = MaterialTheme.shapes.medium,
-                color = if (isUser) MaterialTheme.colorScheme.surface
-                else Color.Transparent
-            ) {
-                Column(Modifier.padding(16.dp)) {
-                    if (isUser) {
-                        BasicRichText(
-                            modifier = Modifier
-                        ) {
-                            Markdown(message.text)
-                        }
-                    } else {
-                        BasicRichText(
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Markdown(text)
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
 fun rememberKeyboardState(): State<Boolean> {
     val isImeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
     return rememberUpdatedState(isImeVisible)
 }
 
+
+val topAppbarBrush = Brush.verticalGradient(
+    colors = listOf(
+        backgroundColor.copy(alpha = .9f),
+        backgroundColor.copy(alpha = .8f),
+        backgroundColor.copy(alpha = .7f),
+        backgroundColor.copy(alpha = .5f)
+    )
+)
+
+val inputBrush = Brush.verticalGradient(
+    colors = listOf(
+        backgroundColor.copy(alpha = .7f),
+        backgroundColor.copy(alpha = .8f),
+        backgroundColor.copy(alpha = .9f)
+    )
+)
 
 @Preview
 @Composable

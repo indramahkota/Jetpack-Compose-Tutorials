@@ -1,4 +1,4 @@
-package com.smarttoolfactory.tutorial4_1chatbot.ui.component
+package com.smarttoolfactory.tutorial4_1chatbot.ui.component.input
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Box
@@ -15,6 +15,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
@@ -29,6 +30,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -105,8 +107,9 @@ internal fun ChatTextField(
             onClick = onClick
         ) {
             Icon(
+                modifier = Modifier.rotate(-90f),
                 tint = Color.White,
-                imageVector = Icons.AutoMirrored.Filled.Send,
+                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                 contentDescription = null
             )
         }

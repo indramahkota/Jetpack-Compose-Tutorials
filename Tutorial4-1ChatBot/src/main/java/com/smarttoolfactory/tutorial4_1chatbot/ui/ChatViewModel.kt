@@ -8,6 +8,7 @@ import com.smarttoolfactory.tutorial4_1chatbot.domain.StreamChatCompletionUseCas
 import com.smarttoolfactory.tutorial4_1chatbot.domain.StreamSignal
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.android.awaitFrame
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -18,6 +19,7 @@ import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.util.UUID
 import javax.inject.Inject
 
 data class ChatUiState(
@@ -38,24 +40,32 @@ enum class ChatStatus(val order: Int) {
 fun ChatStatus.greaterThan(other: ChatStatus): Boolean = this.order > other.order
 fun ChatStatus.lesserThan(other: ChatStatus): Boolean = this.order < other.order
 
-enum class Role(val value: String) {
-    User("user"), Assistant("assistant")
-}
-
 data class Chat(
     val title: String? = null,
     val messages: List<Message>? = null
 )
 
 data class Message(
-    val id: String,
+    val uniqueId: String = UUID.randomUUID().toString(),
+    val messageId: String,
     val role: Role,
     val streaming: Boolean,
     val text: String,
-    val feedback: Feedback? = null
+    val feedback: FeedbackModel? = null,
+    val errorModel: ErrorModel? = null
 )
 
-data class Feedback(
+enum class Role(val value: String) {
+    User("user"), Assistant("assistant")
+}
+
+data class ErrorModel(
+    val text: String,
+    val promptToRetry: String,
+    val retry: Boolean
+)
+
+data class FeedbackModel(
     val text: String? = null,
     val reaction: Reaction? = null
 ) {
@@ -97,7 +107,7 @@ class ChatViewModel @Inject constructor(
             }
 
             val userMessage = Message(
-                id = request.id.orEmpty(),
+                messageId = request.id.orEmpty(),
                 role = Role.User,
                 streaming = false,
                 text = prompt
@@ -110,7 +120,7 @@ class ChatViewModel @Inject constructor(
             }
 
             val initialMessage = Message(
-                id = userMessage.id,
+                messageId = userMessage.messageId,
                 role = Role.Assistant,
                 streaming = true,
                 text = ""
@@ -133,11 +143,6 @@ class ChatViewModel @Inject constructor(
                         }
 
                         is StreamSignal.Completed -> {
-                            val lastIndex = messages.lastIndex
-                            val currentMessage = messages.getOrNull(lastIndex)
-                            currentMessage?.let {
-                                messages[lastIndex] = it.copy(streaming = false)
-                            }
                             println("ChatViewModel Completed")
                             _uiState.update {
                                 it.copy(chatStatus = ChatStatus.Completed)
@@ -181,6 +186,15 @@ class ChatViewModel @Inject constructor(
                         currentMessage?.let {
                             messages[lastIndex] = it.copy(text = it.text + text)
                         }
+                    } else if (streamSignal is StreamSignal.Completed) {
+                        val lastIndex = messages.lastIndex
+                        val currentMessage = messages.getOrNull(lastIndex)
+                        currentMessage?.let {
+                            messages[lastIndex] =
+                                it.copy(streaming = false, feedback = FeedbackModel())
+                        }
+                    } else if (streamSignal is StreamSignal.Failed) {
+
                     }
                 }
                 .flowOn(Dispatchers.Default)

@@ -1,4 +1,4 @@
-package com.smarttoolfactory.tutorial4_1chatbot.ui.component
+package com.smarttoolfactory.tutorial4_1chatbot.ui.component.button
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
