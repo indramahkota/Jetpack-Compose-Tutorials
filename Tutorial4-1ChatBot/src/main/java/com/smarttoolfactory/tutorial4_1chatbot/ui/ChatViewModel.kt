@@ -137,12 +137,12 @@ class ChatViewModel @Inject constructor(
                 }
             }
 
-            repeat(3){
+            repeat(3) {
                 awaitFrame()
             }
 
             println("Viewodel after delay...")
-            streamUseCase(chatCompletionsRequest = request)
+            streamJob = streamUseCase(chatCompletionsRequest = request)
                 .onEach { stream: StreamSignal ->
                     when (stream) {
                         is StreamSignal.Start -> {}
@@ -236,7 +236,7 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    fun cancelStreaming() {
+    fun cancelStream() {
         streamJob?.cancel()
         streamJob = null
 
@@ -245,14 +245,5 @@ class ChatViewModel @Inject constructor(
 //        if (assistantId != null) {
 //            updateMessageById(assistantId) { it.copy(messageStatus = MessageStatus.Cancelled) }
 //        }
-
-//        _uiState.update {
-//            it.copy(
-//                isStreaming = false,
-//                activeAssistantId = null,
-//                shouldPinMessageToTop = false,
-//                pinnedMessageId = null
-//            )
-//        }
-    }
+        }
 }
