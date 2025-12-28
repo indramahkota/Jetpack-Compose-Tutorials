@@ -6,16 +6,21 @@ import androidx.lifecycle.viewModelScope
 import com.smarttoolfactory.tutorial4_1chatbot.data.ChatCompletionsRequest
 import com.smarttoolfactory.tutorial4_1chatbot.domain.StreamChatCompletionUseCase
 import com.smarttoolfactory.tutorial4_1chatbot.domain.StreamSignal
+import com.smarttoolfactory.tutorial4_1chatbot.samples.chunkWordsWithDelay
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.android.awaitFrame
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -98,7 +103,7 @@ class ChatViewModel @Inject constructor(
     var streamJob: Job? = null
 
     fun sendMessage(prompt: String) {
-//        streamJob?.cancel()
+        streamJob?.cancel()
 
         viewModelScope.launch {
             val request = ChatCompletionsRequest(
@@ -141,7 +146,6 @@ class ChatViewModel @Inject constructor(
                 awaitFrame()
             }
 
-            println("Viewodel after delay...")
             streamJob = streamUseCase(chatCompletionsRequest = request)
                 .onEach { stream: StreamSignal ->
                     when (stream) {
@@ -156,7 +160,6 @@ class ChatViewModel @Inject constructor(
                         }
 
                         is StreamSignal.Completed -> {
-//                            println("ChatViewModel Completed")
                             _uiState.update {
                                 it.copy(
                                     scrollState = ChatUiState.ScrollState.ScrollOnComplete
@@ -165,7 +168,6 @@ class ChatViewModel @Inject constructor(
                         }
 
                         is StreamSignal.Failed -> {
-//                            println("ChatViewModel Failed: ${stream.throwable.message}")
                             _uiState.update {
                                 it.copy(
                                     scrollState = ChatUiState.ScrollState.ScrollOnComplete
@@ -176,7 +178,6 @@ class ChatViewModel @Inject constructor(
                     }
                 }
                 .onEach { streamSignal: StreamSignal ->
-
                     when (streamSignal) {
                         is StreamSignal.Start -> {
 //                            updateMessageById(userMessage.uiKey) { message ->
@@ -217,6 +218,23 @@ class ChatViewModel @Inject constructor(
                         }
                     }
                 }
+                // TODO Add buffering
+//                .mapNotNull { streamSignal: StreamSignal ->
+//                    if (streamSignal is StreamSignal.Delta) {
+//                        streamSignal.text
+//                    } else {
+//                        null
+//                    }
+//                }
+//                .onEach { text ->
+//                    updateMessageById(initialMessage.uiKey) { message ->
+//                        message.copy(
+//                            messageStatus = MessageStatus.Streaming,
+//                            text = message.text + text,
+//                        )
+//                    }
+//                }
+
                 .flowOn(Dispatchers.Default)
                 .catch { t ->
                     _uiState.update {
@@ -245,5 +263,33 @@ class ChatViewModel @Inject constructor(
 //        if (assistantId != null) {
 //            updateMessageById(assistantId) { it.copy(messageStatus = MessageStatus.Cancelled) }
 //        }
+    }
+}
+
+fun Flow<String>.chunkDeltasWithDelay(
+    wordMax: Int = 10,
+    delayMillis: Long = 300L
+): Flow<String> = flow {
+    val buffer = mutableListOf<String>()
+
+    collect { delta ->
+        val words = delta
+            .split(" ", "\n","\t")
+            .filter { it.isNotBlank() }
+
+        for (word in words) {
+            buffer.add(word)
+            if (buffer.size == wordMax) {
+                emit(buffer.joinToString(" ") + " ")
+                delay(delayMillis)
+                buffer.clear()
+            }
         }
+    }
+
+    // Flush remaining words on completion
+    if (buffer.isNotEmpty()) {
+        emit(buffer.joinToString(" "))
+        delay(delayMillis)
+    }
 }

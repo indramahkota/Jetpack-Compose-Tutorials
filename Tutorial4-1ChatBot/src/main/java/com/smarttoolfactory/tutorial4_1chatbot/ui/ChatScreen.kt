@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,19 +22,14 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListItemInfo
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -44,8 +38,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -62,12 +54,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.halilibo.richtext.commonmark.Markdown
-import com.halilibo.richtext.ui.BasicRichText
 import com.smarttoolfactory.tutorial4_1chatbot.ui.component.button.JumpToBottomButton
 import com.smarttoolfactory.tutorial4_1chatbot.ui.component.input.ChatTextField
 import com.smarttoolfactory.tutorial4_1chatbot.ui.component.message.MessageRow
@@ -82,8 +71,11 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlin.math.max
 
-val contentPaddingTop = 12.dp
+val contentPaddingTop = 16.dp
 val itemSpacing = 16.dp
+val bottomPadding = 16.dp
+val inputHeight = 56.dp
+
 val backgroundColor = Color(0xFFFAFAFA)
 
 private fun LazyListState.isAtBottomPx(thresholdPx: Int = 6): Boolean {
@@ -129,7 +121,7 @@ fun ChatScreen(
     // Height of Input area, its bottom padding and navigation bar heigh
     // This is the bottom of LazyColumn or last item minimum to keep user prompt on top
     // when it's entered
-    val contentPaddingBottom = 56.dp + 16.dp + with(density) {
+    val contentPaddingBottom = inputHeight + bottomPadding + with(density) {
         navBarHeight.toDp()
     }
 
@@ -227,6 +219,8 @@ fun ChatScreen(
                     it.index == lastIndex
                 }
 
+                // If new prompt is outside of lazy column, first push it to bottom of LazyColumn
+                // for it to be visible to start measuring space needed to pust it to top
                 if (lastItem == null) {
                     println("invoke pre-scroll")
                     listState.animateScrollToItem(lastIndex)
@@ -268,14 +262,6 @@ fun ChatScreen(
             }
         }
     }
-
-//    LaunchedEffect(Unit) {
-//        snapshotFlow {
-//            listState.layoutInfo.visibleItemsInfo
-//        }.collect { visibleItemsInfo ->
-//            println("Viewport offset: ${listState.layoutInfo.viewportEndOffset}")
-//        }
-//    }
 
     Box(
         modifier = Modifier
@@ -388,12 +374,11 @@ fun ChatScreen(
         InputArea(
             modifier = Modifier
                 .align(Alignment.BottomStart)
-//                .border(2.dp, Color.Cyan)
+                .border(2.dp, Color.Cyan)
+                .background(brush = inputBrush)
+                .padding(bottom = bottomPadding, start = 16.dp, end = 16.dp)
                 .navigationBarsPadding()
-//                .background(
-//                    brush = inputBrush
-//                )
-                .padding(bottom = 16.dp, start = 16.dp, end = 16.dp)
+                .height(inputHeight)
                 .fillMaxWidth(),
             focusRequester = focusRequester,
             value = input,
