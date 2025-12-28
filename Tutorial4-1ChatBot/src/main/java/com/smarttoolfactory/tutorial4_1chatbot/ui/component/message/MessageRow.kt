@@ -14,6 +14,7 @@ import androidx.compose.ui.unit.dp
 import com.halilibo.richtext.commonmark.Markdown
 import com.halilibo.richtext.ui.BasicRichText
 import com.smarttoolfactory.tutorial4_1chatbot.ui.Message
+import com.smarttoolfactory.tutorial4_1chatbot.ui.MessageStatus
 import com.smarttoolfactory.tutorial4_1chatbot.ui.Role
 
 
@@ -28,26 +29,48 @@ fun MessageRow(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
     ) {
-        val text = message.text
-        if (text.isNotEmpty()) {
+
+        if (isUser) {
             Surface(
                 tonalElevation = 2.dp,
                 shape = MaterialTheme.shapes.medium,
-                color = if (isUser) MaterialTheme.colorScheme.surface
-                else Color.Transparent
+                color = MaterialTheme.colorScheme.surface
             ) {
                 Column(Modifier.padding(16.dp)) {
-                    if (isUser) {
-                        BasicRichText(
-                            modifier = Modifier
-                        ) {
-                            Markdown(message.text)
-                        }
-                    } else {
-                        BasicRichText(
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Markdown(text)
+                    BasicRichText(
+                        modifier = Modifier
+                    ) {
+                        Markdown(message.text)
+                    }
+                }
+            }
+        } else {
+            when (message.messageStatus) {
+                MessageStatus.Queued -> {
+                    LoadingRow()
+                }
+
+                MessageStatus.Failed -> {
+                    message.failure?.let {
+                        ErrorMessageRow(message = message)
+                    }
+                }
+
+                else -> {
+                    Surface(
+                        tonalElevation = 2.dp,
+                        shape = MaterialTheme.shapes.medium,
+                        color = Color.Transparent
+                    ) {
+                        Column(Modifier.padding(16.dp)) {
+                            BasicRichText(
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Markdown(message.text)
+                            }
+                            message.feedback?.let {
+                                MessageFeedbackRow(message = message)
+                            }
                         }
                     }
                 }

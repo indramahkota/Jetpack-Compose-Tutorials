@@ -5,9 +5,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.smarttoolfactory.tutorial4_1chatbot.ui.component.indicator.BouncingDotProgressIndicator
-import com.smarttoolfactory.tutorial4_1chatbot.ui.component.indicator.IndicatorDefaults
 
 @Composable
 fun LoadingRow(
@@ -16,7 +16,8 @@ fun LoadingRow(
     Box(modifier = modifier.fillMaxWidth()){
         BouncingDotProgressIndicator(
             modifier = Modifier.size(48.dp, 24.dp),
-            animatedColor = IndicatorDefaults.DotColor.copy(alpha = .5f)
+            animatedColor = Color.Black,
+            initialColor = Color.Black.copy(alpha = .5f)
         )
     }
 }

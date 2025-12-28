@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -22,7 +23,9 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListItemInfo
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
@@ -31,6 +34,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -40,6 +45,7 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -49,20 +55,22 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.boundsInParent
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.halilibo.richtext.commonmark.Markdown
+import com.halilibo.richtext.ui.BasicRichText
 import com.smarttoolfactory.tutorial4_1chatbot.ui.component.button.JumpToBottomButton
 import com.smarttoolfactory.tutorial4_1chatbot.ui.component.input.ChatTextField
 import com.smarttoolfactory.tutorial4_1chatbot.ui.component.message.MessageRow
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.android.awaitFrame
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -72,6 +80,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import kotlin.math.max
 
 val contentPaddingTop = 12.dp
 val itemSpacing = 16.dp
@@ -122,9 +131,9 @@ fun ChatScreen(
     }
 
     val uiState by chatViewModel.uiState.collectAsStateWithLifecycle()
+    val uiScrollState: ChatUiState.ScrollState = uiState.scrollState
 
     val messages: SnapshotStateList<Message> = chatViewModel.messages
-    val chatStatus = uiState.chatStatus
 
     val listState = rememberLazyListState()
 
@@ -140,23 +149,8 @@ fun ChatScreen(
 
     val coroutineScope = rememberCoroutineScope()
 
-    val jumpToBottomButtonEnabled by remember {
-        derivedStateOf {
-            val info = listState.layoutInfo
-            val lastVisible = info.visibleItemsInfo.lastOrNull()
-            if (lastVisible == null) {
-                false
-            } else if (lastVisible.index != messages.lastIndex && isKeyboardOpen.not())
-                true
-            else {
-                val viewportBottom = info.viewportEndOffset
-                val itemBottom = lastVisible.offset + lastVisible.size
-                val isAwayFromBottom = abs(itemBottom - viewportBottom) > thresholdPx
-
-                isAwayFromBottom && isKeyboardOpen.not()
-            }
-        }
-    }
+    var bottomGapDp by remember { mutableStateOf(0.dp) }
+    val messageStatus = messages.lastOrNull()?.messageStatus
 
     var autoScrollEnabled by remember { mutableStateOf(true) }
 
@@ -164,10 +158,21 @@ fun ChatScreen(
         derivedStateOf { listState.isAtBottomPx(thresholdPx = 300) }
     }
 
+    val jumpToBottomButtonEnabled by remember {
+        derivedStateOf {
+            val info = listState.layoutInfo
+            val lastVisible = info.visibleItemsInfo.lastOrNull()
 
-    var minHeightOfLastItem by remember {
-        mutableStateOf(0.dp)
+            if (lastVisible == null || isKeyboardOpen) {
+                false
+            } else if (lastVisible.index != messages.lastIndex)
+                true
+            else {
+                isAtBottom.not()
+            }
+        }
     }
+
 
 // If user scrolls while away from bottom, treat as reading history
     LaunchedEffect(Unit) {
@@ -184,8 +189,8 @@ fun ChatScreen(
             }
     }
 
-    LaunchedEffect(chatStatus) {
-        if (chatStatus != ChatStatus.Streaming) return@LaunchedEffect
+    LaunchedEffect(messageStatus) {
+        if (messageStatus != MessageStatus.Streaming) return@LaunchedEffect
         snapshotFlow { autoScrollEnabled && isAtBottom && !listState.isScrollInProgress }
             .distinctUntilChanged()
             .flatMapLatest { shouldPin ->
@@ -196,46 +201,104 @@ fun ChatScreen(
                 if (messages.isNotEmpty()) {
                     try {
                         listState.scrollToItem(messages.lastIndex, Int.MAX_VALUE)
-                    } catch (e: Exception) {
+                    } catch (e: CancellationException) {
                         println("FLOW exception ${e.message}")
                     }
                 }
             }
     }
 
-    // After user prompt message is added, scroll it to top after calculating difference between
-    // prompt's bottom and viewports end offset(position before bottom padding)
-    LaunchedEffect(messages.size, minHeightOfLastItem) {
-        if (chatStatus == ChatStatus.AfterPrompt && messages.size > 2 && minHeightOfLastItem > 0.dp) {
-            val lastIndexToScroll = (messages.lastIndex - 1).coerceIn(0, messages.lastIndex)
-            try {
-                val topAppbarHeightInPx = with(density) {
-                    topAppbarHeight.roundToPx()
+    LaunchedEffect(messageStatus, isKeyboardOpen) {
+
+        if (messageStatus != MessageStatus.Queued || isKeyboardOpen) return@LaunchedEffect
+
+        snapshotFlow {
+            listState.layoutInfo.visibleItemsInfo
+        }.collect { visibleItemsInfo ->
+
+            val info = listState.layoutInfo
+            val total = info.totalItemsCount
+            val viewportEndOffset = info.viewportEndOffset
+
+            println("Bottom Offset: $viewportEndOffset, bottomGapDp: $bottomGapDp")
+
+
+            println(
+                "LaunchedEffect " +
+                        "status: $messageStatus, " +
+                        "viewportEndOffset: $viewportEndOffset"
+            )
+
+            if (total > 2) {
+                val lastIndex = total - 2
+
+                val lastItem = visibleItemsInfo.firstOrNull {
+                    it.index == lastIndex
                 }
-                listState.animateScrollToItem(
-                    index = lastIndexToScroll,
-                    scrollOffset = topAppbarHeightInPx
-                )
-                println("SCROLL is complete $minHeightOfLastItem, status: $chatStatus, last indx: ${messages.size}")
-            } catch (e: Exception) {
-                println("Exception ${e.message}")
+
+                if (lastItem == null) {
+                    println("invoke pre-scroll")
+                    listState.animateScrollToItem(lastIndex)
+                }
+
+                awaitFrame()
+                if (lastItem != null) {
+                    val lastBottom = lastItem.size
+                    val gap = viewportEndOffset - lastBottom
+
+                    val finalGap = max(0, gap)
+                    bottomGapDp = with(density) {
+                        finalGap.toDp() - contentPaddingBottom - itemSpacing
+                    }
+                    println(
+                        "SCREEN Last index: $lastIndex," +
+                                " viewportEndOffset: $viewportEndOffset," +
+                                " lastBottom: $lastBottom," +
+                                " count: ${messages.size}," +
+                                " finalGap: $finalGap"
+                    )
+
+                    try {
+                        println("FIRST Scroll $messageStatus")
+                        awaitFrame()
+                        listState.animateScrollToItem(lastIndex)
+                    } catch (e: Exception) {
+                        println("First Exception: ${e.message}")
+                    }
+                } else {
+                    try {
+                        println("SECOND scroll $messageStatus")
+                        awaitFrame()
+                        listState.animateScrollToItem(lastIndex)
+                    } catch (e: Exception) {
+                        println("Second Exception: ${e.message}")
+                    }
+                }
             }
         }
     }
+
+//    LaunchedEffect(Unit) {
+//        snapshotFlow {
+//            listState.layoutInfo.visibleItemsInfo
+//        }.collect { visibleItemsInfo ->
+//            println("Viewport offset: ${listState.layoutInfo.viewportEndOffset}")
+//        }
+//    }
 
     Box(
         modifier = Modifier
             .background(backgroundColor)
             .imePadding()
     ) {
-//        Text(
-//            modifier = Modifier.height(120.dp),
-//            text = "autoScroll: $autoScrollEnabled, scroll in progress: ${listState.isScrollInProgress}\n" +
-//                    "isAtBottom: $isAtBottom\n" +
-//                    "jumpToBottomButtonEnabled: $jumpToBottomButtonEnabled\n" +
-//                    "position: $position\n" +
-//                    " state: $chatStatus"
-//        )
+        val lastMessage = messages.lastOrNull()
+
+        Text(
+            modifier = Modifier
+                .padding(horizontal = 8.dp, vertical = 40.dp),
+            text = "STATUS: ${lastMessage?.messageStatus} index: ${messages.lastIndex}\n" +
+                    "isAtBottom: $isAtBottom, autoScroll: $autoScrollEnabled, jump: $jumpToBottomButtonEnabled"
+        )
 
         Column(
             Modifier
@@ -258,7 +321,7 @@ fun ChatScreen(
         ) {
 
             LazyColumn(
-                modifier = Modifier.weight(1f).fillMaxWidth(),
+                modifier = Modifier.fillMaxSize().border(4.dp, Color.Gray),
                 state = listState,
                 contentPadding = PaddingValues(
                     top = contentPaddingTop + topAppbarHeight,
@@ -268,59 +331,50 @@ fun ChatScreen(
             ) {
                 itemsIndexed(
                     items = messages,
-                    // TODO Add content type
-//                     contentType = { index: Int, type: Message ->
-//
-//                     },
+                    contentType = { index: Int, message: Message ->
+                        message.messageStatus
+                    },
                     key = { _: Int, message: Message ->
-                        message.uniqueId
+                        message.uiKey
                     }
                 ) { index: Int, msg: Message ->
-                    val modifier =
-                        if (index == messages.lastIndex - 1 && chatStatus == ChatStatus.AfterPrompt) {
-                            Modifier
-                                .onGloballyPositioned { layoutCoordinates ->
-                                    // Get bottom of prompt message after it's added
-                                    // before stream started
-                                    val viewportEndOffset =
-                                        listState.layoutInfo.viewportEndOffset
-
-                                    val bounds = layoutCoordinates.boundsInParent()
-                                    val height = bounds.height
-
-                                    minHeightOfLastItem = with(density) {
-                                        (viewportEndOffset - height).toDp() - itemSpacing - contentPaddingBottom
-                                    }
-
-                                    println(
-                                        "index:$index, messages size: ${messages.size}" +
-                                                " bounds: ${bounds.height}, " +
-                                                "reservedSpace: $minHeightOfLastItem, " +
-                                                "status: $chatStatus"
-                                    )
-                                }
-                        } else if (index == messages.lastIndex && msg.role != Role.User && messages.size > 2) {
-                            Modifier.heightIn(min = minHeightOfLastItem)
-//                                .border(2.dp, Color.Black)
-                        } else {
-                            Modifier
-                        }
-                    Box(
-                        modifier = modifier
+                    val modifier = if (msg.role == Role.Assistant &&
+                        messages.lastIndex == index
                     ) {
-                        MessageRow(
-                            modifier = Modifier,
-                            message = msg
-                        )
+                        Modifier.heightIn(bottomGapDp).border(2.dp, Color.Magenta)
+                    } else if (messages.size > 2 && index == messages.lastIndex - 1) {
+                        Modifier
+                            .border(2.dp, Color.Cyan)
+                            .drawBehind {
+//                                if (messages.size > 2 && index == messages.lastIndex - 1) {
+//                                    val viewportEndOffset = listState.layoutInfo.viewportEndOffset
+//                                    println(
+//                                        "🔥 drawBehind index: $index, " +
+//                                                "height: ${size.height}, " +
+//                                                "viewportEndOffset: $viewportEndOffset"
+//                                    )
+//                                }
+                            }
+                    } else {
+                        Modifier.border(2.dp, Color.Blue)
                     }
+
+                    MessageRow(
+                        modifier = modifier,
+                        message = msg
+                    )
                 }
+
+                // This creates the “empty space below” so you can scroll.
+
             }
         }
 
         TopAppBar(
             modifier = Modifier.height(topAppbarHeight)
                 .border(2.dp, Color.Red)
-                .background(brush = topAppbarBrush),
+//                .background(brush = topAppbarBrush)
+            ,
             title = {},
             actions = {
                 IconButton(
@@ -337,23 +391,14 @@ fun ChatScreen(
             )
         )
 
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-//                .border(5.dp, Color.Magenta)
-                .height(contentPaddingBottom)
-//                .navigationBarsPadding()
-                .fillMaxWidth()
-        )
-
         InputArea(
             modifier = Modifier
                 .align(Alignment.BottomStart)
 //                .border(2.dp, Color.Cyan)
                 .navigationBarsPadding()
-                .background(
-                    brush = inputBrush
-                )
+//                .background(
+//                    brush = inputBrush
+//                )
                 .padding(bottom = 16.dp, start = 16.dp, end = 16.dp)
                 .fillMaxWidth(),
             focusRequester = focusRequester,
@@ -386,6 +431,54 @@ fun ChatScreen(
                 }
             }
         )
+    }
+}
+
+@Composable
+private fun HandleScrollOnStream(
+    listState: LazyListState,
+    uiScrollState: ChatUiState.ScrollState,
+    messages: SnapshotStateList<Message>
+) {
+    var autoScrollEnabled by remember { mutableStateOf(true) }
+
+    val isAtBottom by remember {
+        derivedStateOf { listState.isAtBottomPx(thresholdPx = 300) }
+    }
+
+
+// If user scrolls while away from bottom, treat as reading history
+    LaunchedEffect(Unit) {
+        snapshotFlow { isAtBottom to listState.isScrollInProgress }
+            .distinctUntilChanged()
+            .collect { (atBottom, inProgress) ->
+                autoScrollEnabled = if (inProgress) {
+                    false
+                } else if (atBottom) {
+                    true
+                } else {
+                    false
+                }
+            }
+    }
+
+    LaunchedEffect(uiScrollState) {
+        if (uiScrollState != ChatUiState.ScrollState.AutoScroll) return@LaunchedEffect
+        snapshotFlow { autoScrollEnabled && isAtBottom && !listState.isScrollInProgress }
+            .distinctUntilChanged()
+            .flatMapLatest { shouldPin ->
+                if (shouldPin) tickerFlow(120) else emptyFlow()
+            }
+            .collect {
+//                println("COLLECTING...")
+                if (messages.isNotEmpty()) {
+                    try {
+                        listState.scrollToItem(messages.lastIndex, Int.MAX_VALUE)
+                    } catch (e: CancellationException) {
+                        println("FLOW exception ${e.message}")
+                    }
+                }
+            }
     }
 }
 
@@ -437,7 +530,7 @@ val inputBrush = Brush.verticalGradient(
 
 @Preview
 @Composable
-fun LazyColumnTest() {
+fun LazyColumnInfoTest() {
 
     var text by remember {
         mutableStateOf("")
@@ -466,11 +559,14 @@ fun LazyColumnTest() {
     LaunchedEffect(listState) {
         snapshotFlow {
             listState.layoutInfo.visibleItemsInfo
-        }.collect {
+        }.collect { lazyListItemInfos: List<LazyListItemInfo> ->
             val viewportEndOffset = listState.layoutInfo.viewportEndOffset
             val height = listState.layoutInfo.viewportSize.height
 
-            text = "viewportEndOffset: $viewportEndOffset, height:$height"
+            text = "viewportEndOffset: $viewportEndOffset, height:$height\n"
+            lazyListItemInfos.forEach { item: LazyListItemInfo ->
+                text += "i: ${item.index}, s: ${item.size}, offset: ${item.offset}\n"
+            }
         }
     }
 
@@ -496,11 +592,106 @@ fun LazyColumnTest() {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .border(2.dp, Color.Red)
                         .height(iteHeight)
                 ) {
                     Text("Index: $it")
                 }
             }
         }
+    }
+}
+
+@Preview
+@Composable
+fun LazyColumnMarkdownRecompositionTest() {
+
+    var text by remember {
+        mutableStateOf("")
+    }
+
+    val listState = rememberLazyListState()
+
+    val density = LocalDensity.current
+
+    val padding = with(density) {
+        100.toDp()
+    }
+
+
+    val height = with(density) {
+        1000.toDp()
+    }
+
+    val messages = remember {
+        mutableStateListOf<String>()
+    }
+
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            listState.layoutInfo.visibleItemsInfo
+        }.collect {
+
+            val layoutInfo = listState.layoutInfo
+            val viewportEndOffset = layoutInfo.viewportEndOffset
+            val height = layoutInfo.viewportSize.height
+
+            text = "viewportEndOffset: $viewportEndOffset, " +
+                    "height:$height\n"
+
+            var tempText = ""
+
+            println("START NEW INFO")
+            layoutInfo.visibleItemsInfo.forEach { info: LazyListItemInfo ->
+                tempText += "index: ${info.index}, height: ${info.size}, offset: ${info.offset}\n"
+                println(tempText)
+            }
+
+            text += tempText
+        }
+    }
+
+    Column {
+
+
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .fillMaxWidth().height(height),
+            contentPadding = PaddingValues(padding)
+        ) {
+            items(messages) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().drawBehind {
+                        println("Draw height: ${size.height}")
+                    }
+                ) {
+                    Surface(
+                        tonalElevation = 2.dp,
+                        shape = MaterialTheme.shapes.medium,
+                        color = MaterialTheme.colorScheme.surface
+                    ) {
+                        Column(Modifier.padding(16.dp)) {
+                            BasicRichText(
+                                modifier = Modifier
+                            ) {
+                                Markdown(it)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.weight(1f))
+        Text(text)
+        Button(
+            onClick = {
+                messages.add("Write 3 words")
+            }
+        ) {
+            Text("Add message")
+        }
+
     }
 }

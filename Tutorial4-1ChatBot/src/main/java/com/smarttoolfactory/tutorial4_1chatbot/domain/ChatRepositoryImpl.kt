@@ -8,7 +8,7 @@ import com.smarttoolfactory.tutorial4_1chatbot.data.sseclient.ChatSseDataSource
 import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.Moshi
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.filterIsInstance
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.mapNotNull
 import javax.inject.Inject
 
@@ -27,23 +27,42 @@ class ChatStreamRepositoryImpl @Inject constructor(
         val request = requestFactory.chatCompletionsStreamRequest(request)
 
         return chatSseDataSource.connectAsFlow(request)
-            .filterIsInstance<SseMessage.Event>()
-            .mapNotNull { evt ->
-                val data = evt.data.trim()
-
-                if (data == Done) return@mapNotNull StreamSignal.Completed()
-
-                val chunk = runCatching { adapter.fromJson(data) }.getOrNull()
-                    ?: return@mapNotNull null
-
-                val choice0 = chunk.choices.firstOrNull() ?: return@mapNotNull null
-
-                choice0.finishReason?.let { fr ->
-                    return@mapNotNull StreamSignal.Completed(finishReason = fr)
-                }
-
-                val deltaText = choice0.delta.content
-                if (deltaText.isNullOrEmpty()) null else StreamSignal.Delta(deltaText)
+            .catch {
+                emit(SseMessage.Error(it))
             }
+            .mapNotNull { sseMessage: SseMessage ->
+                when (sseMessage) {
+                    is SseMessage.Opened -> {
+                        StreamSignal.Start
+                    }
+                    is SseMessage.Error -> {
+                        StreamSignal.Failed(sseMessage.throwable)
+                    }
+                    is SseMessage.Event -> {
+                        parseEvent(sseMessage)
+                    }
+                    is SseMessage.Closed -> {
+                        StreamSignal.Completed("closed")
+                    }
+                }
+            }
+    }
+
+    private fun parseEvent(evt: SseMessage.Event): StreamSignal? {
+        val data = evt.data.trim()
+
+        if (data == Done) return StreamSignal.Completed()
+
+        val chunk = runCatching { adapter.fromJson(data) }.getOrNull()
+            ?: return null
+
+        val choice0 = chunk.choices.firstOrNull() ?: return null
+
+        choice0.finishReason?.let { fr ->
+            return StreamSignal.Completed(finishReason = fr)
+        }
+
+        val deltaText = choice0.delta.content
+        return if (deltaText.isNullOrEmpty()) null else StreamSignal.Delta(deltaText)
     }
 }

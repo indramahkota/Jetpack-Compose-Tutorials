@@ -51,7 +51,7 @@ class ChatSseDataSourceImpl @Inject constructor(
                     val err: Throwable =
                         t ?: RuntimeException("SSE failure, HTTP=${response?.code}")
                     trySend(SseMessage.Error(err))
-                    close(err)
+                    close()
                 }
 
                 override fun onClosed(eventSource: EventSource) {

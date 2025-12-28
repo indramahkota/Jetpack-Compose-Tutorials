@@ -1,5 +1,6 @@
 package com.smarttoolfactory.tutorial4_1chatbot.ui.component.message
 
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import com.smarttoolfactory.tutorial4_1chatbot.ui.Message
@@ -9,5 +10,5 @@ fun ErrorMessageRow(
     modifier: Modifier = Modifier,
     message: Message
 ) {
-
+    Text("ERROR OCCURRED 🔥")
 }

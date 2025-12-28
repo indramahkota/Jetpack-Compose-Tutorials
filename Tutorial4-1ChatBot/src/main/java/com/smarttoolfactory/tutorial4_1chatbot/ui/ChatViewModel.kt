@@ -8,14 +8,14 @@ import com.smarttoolfactory.tutorial4_1chatbot.domain.StreamChatCompletionUseCas
 import com.smarttoolfactory.tutorial4_1chatbot.domain.StreamSignal
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.android.awaitFrame
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -23,22 +23,32 @@ import java.util.UUID
 import javax.inject.Inject
 
 data class ChatUiState(
-    val chatStatus: ChatStatus = ChatStatus.Idle,
+    val scrollState: ScrollState = ScrollState.None,
+    val inputState: InputState = InputState.Idle,
     val error: String? = null
-)
+) {
+    sealed interface ScrollState {
+        object None : ScrollState
+        object AutoScroll : ScrollState
+        object PinToTop : ScrollState
+        object ScrollOnComplete : ScrollState
+    }
 
-enum class ChatStatus(val order: Int) {
-    Idle(0),
-    BeforePrompt(1),
-    AfterPrompt(2),
-    Thinking(3),
-    Streaming(4),
-    Completed(5),
-    Failed(6)
+    sealed interface InputState {
+        object Idle : InputState
+        object Typing : InputState
+        object Streaming : InputState
+        object ScrollOnComplete : InputState
+    }
 }
 
-fun ChatStatus.greaterThan(other: ChatStatus): Boolean = this.order > other.order
-fun ChatStatus.lesserThan(other: ChatStatus): Boolean = this.order < other.order
+enum class MessageStatus {
+    Queued,        // user message accepted, request not yet acted upon
+    Streaming,    // assistant streaming
+    Completed,     // final
+    Failed,        // error
+    Cancelled
+}
 
 data class Chat(
     val title: String? = null,
@@ -46,31 +56,31 @@ data class Chat(
 )
 
 data class Message(
-    val uniqueId: String = UUID.randomUUID().toString(),
+    val uiKey: String,
     val messageId: String,
     val role: Role,
-    val streaming: Boolean,
-    val text: String,
-    val feedback: FeedbackModel? = null,
-    val errorModel: ErrorModel? = null
+    val text: String = "",
+    val messageStatus: MessageStatus = MessageStatus.Queued,
+    val feedback: Feedback? = null,
+    val failure: Failure? = null
 )
 
 enum class Role(val value: String) {
     User("user"), Assistant("assistant")
 }
 
-data class ErrorModel(
+data class Failure(
     val text: String,
     val promptToRetry: String,
     val retry: Boolean
 )
 
-data class FeedbackModel(
+data class Feedback(
     val text: String? = null,
-    val reaction: Reaction? = null
+    val reaction: Reaction = Reaction.None
 ) {
     enum class Reaction {
-        ThumbsUp, ThumbsDown
+        None, ThumbsUp, ThumbsDown
     }
 }
 
@@ -86,10 +96,11 @@ class ChatViewModel @Inject constructor(
 
     val messages = mutableStateListOf<Message>()
 
+    var streamJob: Job? = null
+
     fun sendMessage(prompt: String) {
-        _uiState.update {
-            it.copy(chatStatus = ChatStatus.Thinking)
-        }
+//        streamJob?.cancel()
+
         viewModelScope.launch {
             val request = ChatCompletionsRequest(
                 model = Model,
@@ -102,99 +113,107 @@ class ChatViewModel @Inject constructor(
                 )
             )
 
-            _uiState.update {
-                it.copy(chatStatus = ChatStatus.BeforePrompt)
-            }
-
             val userMessage = Message(
                 messageId = request.id.orEmpty(),
+                uiKey = UUID.randomUUID().toString(),
                 role = Role.User,
-                streaming = false,
-                text = prompt
+                text = prompt,
             )
 
             messages.add(userMessage)
 
-            _uiState.update {
-                it.copy(chatStatus = ChatStatus.AfterPrompt)
-            }
-
             val initialMessage = Message(
                 messageId = userMessage.messageId,
+                uiKey = UUID.randomUUID().toString(),
                 role = Role.Assistant,
-                streaming = true,
-                text = ""
+                messageStatus = MessageStatus.Queued
             )
             messages.add(initialMessage)
 
+            if (messages.size > 2) {
+                _uiState.update {
+                    it.copy(
+                        scrollState = ChatUiState.ScrollState.PinToTop
+                    )
+                }
+            }
+
+            repeat(3){
+                awaitFrame()
+            }
+
+            println("Viewodel after delay...")
             streamUseCase(chatCompletionsRequest = request)
                 .onEach { stream: StreamSignal ->
                     when (stream) {
                         is StreamSignal.Start -> {
-                            _uiState.update {
-                                it.copy(chatStatus = ChatStatus.Thinking)
-                            }
+
                         }
 
                         is StreamSignal.Delta -> {
-                            _uiState.update {
-                                it.copy(chatStatus = ChatStatus.Streaming)
-                            }
+
                         }
 
                         is StreamSignal.Completed -> {
-                            println("ChatViewModel Completed")
+//                            println("ChatViewModel Completed")
                             _uiState.update {
-                                it.copy(chatStatus = ChatStatus.Completed)
+                                it.copy(
+                                    scrollState = ChatUiState.ScrollState.ScrollOnComplete
+                                )
                             }
                         }
 
                         is StreamSignal.Failed -> {
-                            println("ChatViewModel Failed: ${stream.throwable.message}")
+//                            println("ChatViewModel Failed: ${stream.throwable.message}")
                             _uiState.update {
-                                it.copy(chatStatus = ChatStatus.Failed)
+                                it.copy(
+                                    scrollState = ChatUiState.ScrollState.None
+                                )
                             }
                         }
 
                     }
                 }
-//                .runningFold("") { acc: String, streamSignal: StreamSignal ->
-//                    when (streamSignal) {
-//                        is StreamSignal.Delta -> acc + streamSignal.text
-//                        else -> acc
-//                    }
-//                }
-//                .onEach { fullText ->
-//                    val lastIndex = messages.lastIndex
-//                    val currentMessage = messages.getOrNull(lastIndex)
-//                    currentMessage?.let {
-//                        messages[lastIndex] = it.copy(text = fullText)
-//                    }
-//                }
-
-//                .flatMapConcat {
-//                    flow {
-//                        delay(30)
-//                        emit(it)
-//                    }
-//                }
                 .onEach { streamSignal: StreamSignal ->
-                    if (streamSignal is StreamSignal.Delta) {
-                        val lastIndex = messages.lastIndex
-                        val currentMessage = messages.getOrNull(lastIndex)
-                        val text = streamSignal.text
-                        currentMessage?.let {
-                            messages[lastIndex] = it.copy(text = it.text + text)
-                        }
-                    } else if (streamSignal is StreamSignal.Completed) {
-                        val lastIndex = messages.lastIndex
-                        val currentMessage = messages.getOrNull(lastIndex)
-                        currentMessage?.let {
-                            messages[lastIndex] =
-                                it.copy(streaming = false, feedback = FeedbackModel())
-                        }
-                    } else if (streamSignal is StreamSignal.Failed) {
 
+                    when (streamSignal) {
+                        is StreamSignal.Start -> {
+//                            updateMessageById(userMessage.uiKey) { message ->
+//                                message.copy(messageStatus = MessageStatus.Completed)
+//                            }
+                        }
+
+                        is StreamSignal.Delta -> {
+                            val text = streamSignal.text
+                            updateMessageById(initialMessage.uiKey) { message ->
+                                message.copy(
+                                    messageStatus = MessageStatus.Streaming,
+                                    text = message.text + text,
+                                )
+                            }
+                        }
+
+                        is StreamSignal.Completed -> {
+                            updateMessageById(initialMessage.uiKey) { message ->
+                                message.copy(
+                                    messageStatus = MessageStatus.Completed,
+                                    feedback = Feedback()
+                                )
+                            }
+                        }
+
+                        is StreamSignal.Failed -> {
+                            updateMessageById(initialMessage.uiKey) { message ->
+                                message.copy(
+                                    messageStatus = MessageStatus.Failed,
+                                    failure = Failure(
+                                        text = "Error Occurred",
+                                        promptToRetry = prompt,
+                                        retry = true
+                                    )
+                                )
+                            }
+                        }
                     }
                 }
                 .flowOn(Dispatchers.Default)
@@ -205,10 +224,34 @@ class ChatViewModel @Inject constructor(
                         )
                     }
                 }
-                .onCompletion {
-                    println("ChatViewModel onComplete")
-                }
-                .collect()
+                .launchIn(this)
         }
+    }
+
+    private fun updateMessageById(id: String, transform: (Message) -> Message) {
+        val index = messages.indexOfFirst { it.uiKey == id }
+        if (index >= 0) {
+            messages[index] = transform(messages[index])
+        }
+    }
+
+    fun cancelStreaming() {
+        streamJob?.cancel()
+        streamJob = null
+
+        // Optionally mark active assistant as Cancelled
+//        val assistantId = _uiState.value.activeAssistantId
+//        if (assistantId != null) {
+//            updateMessageById(assistantId) { it.copy(messageStatus = MessageStatus.Cancelled) }
+//        }
+
+//        _uiState.update {
+//            it.copy(
+//                isStreaming = false,
+//                activeAssistantId = null,
+//                shouldPinMessageToTop = false,
+//                pinnedMessageId = null
+//            )
+//        }
     }
 }
