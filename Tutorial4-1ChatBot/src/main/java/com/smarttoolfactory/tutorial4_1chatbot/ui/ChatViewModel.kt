@@ -38,7 +38,6 @@ data class ChatUiState(
         object Idle : InputState
         object Typing : InputState
         object Streaming : InputState
-        object ScrollOnComplete : InputState
     }
 }
 
@@ -146,12 +145,14 @@ class ChatViewModel @Inject constructor(
             streamUseCase(chatCompletionsRequest = request)
                 .onEach { stream: StreamSignal ->
                     when (stream) {
-                        is StreamSignal.Start -> {
-
-                        }
+                        is StreamSignal.Start -> {}
 
                         is StreamSignal.Delta -> {
-
+                            _uiState.update {
+                                it.copy(
+                                    scrollState = ChatUiState.ScrollState.AutoScroll
+                                )
+                            }
                         }
 
                         is StreamSignal.Completed -> {
@@ -167,7 +168,7 @@ class ChatViewModel @Inject constructor(
 //                            println("ChatViewModel Failed: ${stream.throwable.message}")
                             _uiState.update {
                                 it.copy(
-                                    scrollState = ChatUiState.ScrollState.None
+                                    scrollState = ChatUiState.ScrollState.ScrollOnComplete
                                 )
                             }
                         }

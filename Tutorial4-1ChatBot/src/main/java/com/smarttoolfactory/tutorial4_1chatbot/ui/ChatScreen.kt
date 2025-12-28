@@ -64,6 +64,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.halilibo.richtext.commonmark.Markdown
 import com.halilibo.richtext.ui.BasicRichText
@@ -79,7 +80,6 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
-import kotlin.math.abs
 import kotlin.math.max
 
 val contentPaddingTop = 12.dp
@@ -94,7 +94,13 @@ private fun LazyListState.isAtBottomPx(thresholdPx: Int = 6): Boolean {
 
     val viewportBottom = info.viewportEndOffset
     val itemBottom = lastVisible.offset + lastVisible.size
-    return abs(itemBottom - viewportBottom) <= thresholdPx
+//    println(
+//        "isAtBottomPx() viewportBottom: $viewportBottom, " +
+//                "last index:${lastVisible.index}, " +
+//                "visible index:${lastVisible.index}, " +
+//                "itemBottom: $itemBottom"
+//    )
+    return itemBottom - viewportBottom <= thresholdPx
 }
 
 /**
@@ -112,9 +118,6 @@ fun ChatScreen(
     chatViewModel: ChatViewModel
 ) {
     val density = LocalDensity.current
-    val thresholdPx = with(density) {
-        100.dp.roundToPx()
-    }
 
     val statusBarHeight = WindowInsets.statusBars.getTop(density)
     val topAppbarHeight = 48.dp + with(density) {
@@ -134,23 +137,15 @@ fun ChatScreen(
     val uiScrollState: ChatUiState.ScrollState = uiState.scrollState
 
     val messages: SnapshotStateList<Message> = chatViewModel.messages
-
     val listState = rememberLazyListState()
-
     var input by remember { mutableStateOf("") }
     val focusManager = LocalFocusManager.current
     val isKeyboardOpen by rememberKeyboardState()
     val focusRequester = remember { FocusRequester() }
 
-    LaunchedEffect(Unit) {
-        awaitFrame()
-        focusRequester.requestFocus()
-    }
-
     val coroutineScope = rememberCoroutineScope()
-
-    var bottomGapDp by remember { mutableStateOf(0.dp) }
     val messageStatus = messages.lastOrNull()?.messageStatus
+    var bottomGapDp by remember { mutableStateOf(0.dp) }
 
     var autoScrollEnabled by remember { mutableStateOf(true) }
 
@@ -160,19 +155,15 @@ fun ChatScreen(
 
     val jumpToBottomButtonEnabled by remember {
         derivedStateOf {
-            val info = listState.layoutInfo
-            val lastVisible = info.visibleItemsInfo.lastOrNull()
-
-            if (lastVisible == null || isKeyboardOpen) {
-                false
-            } else if (lastVisible.index != messages.lastIndex)
-                true
-            else {
-                isAtBottom.not()
-            }
+            isAtBottom.not() && isKeyboardOpen.not()
         }
     }
 
+    // On start open keyboard on next frame
+    LaunchedEffect(Unit) {
+        awaitFrame()
+        focusRequester.requestFocus()
+    }
 
 // If user scrolls while away from bottom, treat as reading history
     LaunchedEffect(Unit) {
@@ -296,8 +287,11 @@ fun ChatScreen(
         Text(
             modifier = Modifier
                 .padding(horizontal = 8.dp, vertical = 40.dp),
+            fontSize = 16.sp,
+            color = Color.Red,
             text = "STATUS: ${lastMessage?.messageStatus} index: ${messages.lastIndex}\n" +
-                    "isAtBottom: $isAtBottom, autoScroll: $autoScrollEnabled, jump: $jumpToBottomButtonEnabled"
+                    "isAtBottom: $isAtBottom, autoScroll: $autoScrollEnabled\n" +
+                    "scrollState: $uiScrollState"
         )
 
         Column(
