@@ -6,7 +6,6 @@ import androidx.lifecycle.viewModelScope
 import com.smarttoolfactory.tutorial4_1chatbot.data.ChatCompletionsRequest
 import com.smarttoolfactory.tutorial4_1chatbot.domain.StreamChatCompletionUseCase
 import com.smarttoolfactory.tutorial4_1chatbot.domain.StreamSignal
-import com.smarttoolfactory.tutorial4_1chatbot.samples.chunkWordsWithDelay
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -20,7 +19,6 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch

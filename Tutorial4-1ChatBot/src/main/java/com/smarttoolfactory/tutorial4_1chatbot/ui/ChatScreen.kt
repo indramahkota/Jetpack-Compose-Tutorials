@@ -75,8 +75,27 @@ val contentPaddingTop = 16.dp
 val itemSpacing = 16.dp
 val bottomPadding = 16.dp
 val inputHeight = 56.dp
+val topAppbarHeight = 38.dp
 
 val backgroundColor = Color(0xFFFAFAFA)
+
+
+val topAppbarBrush = Brush.verticalGradient(
+    colors = listOf(
+        backgroundColor.copy(alpha = .9f),
+        backgroundColor.copy(alpha = .8f),
+        backgroundColor.copy(alpha = .7f),
+        backgroundColor.copy(alpha = .5f)
+    )
+)
+
+val inputBrush = Brush.verticalGradient(
+    colors = listOf(
+        backgroundColor.copy(alpha = .7f),
+        backgroundColor.copy(alpha = .8f),
+        backgroundColor.copy(alpha = .9f)
+    )
+)
 
 private fun LazyListState.isAtBottomPx(thresholdPx: Int = 6): Boolean {
     val info = layoutInfo
@@ -112,7 +131,7 @@ fun ChatScreen(
     val density = LocalDensity.current
 
     val statusBarHeight = WindowInsets.statusBars.getTop(density)
-    val topAppbarHeight = 48.dp + with(density) {
+    val topAppbarHeight = topAppbarHeight + with(density) {
         statusBarHeight.toDp()
     }
 
@@ -441,21 +460,4 @@ fun rememberKeyboardState(): State<Boolean> {
     return rememberUpdatedState(isImeVisible)
 }
 
-
-val topAppbarBrush = Brush.verticalGradient(
-    colors = listOf(
-        backgroundColor.copy(alpha = .9f),
-        backgroundColor.copy(alpha = .8f),
-        backgroundColor.copy(alpha = .7f),
-        backgroundColor.copy(alpha = .5f)
-    )
-)
-
-val inputBrush = Brush.verticalGradient(
-    colors = listOf(
-        backgroundColor.copy(alpha = .7f),
-        backgroundColor.copy(alpha = .8f),
-        backgroundColor.copy(alpha = .9f)
-    )
-)
 
