@@ -74,7 +74,7 @@ import kotlin.math.max
 val contentPaddingTop = 16.dp
 val itemSpacing = 16.dp
 val bottomPadding = 16.dp
-val inputHeight = 56.dp
+val inputHeight = 48.dp
 val topAppbarHeight = 38.dp
 
 val backgroundColor = Color(0xFFFAFAFA)
@@ -218,12 +218,21 @@ fun ChatScreen(
             listState.layoutInfo.visibleItemsInfo
         }.collect { visibleItemsInfo ->
 
+            awaitFrame()
+
             val info = listState.layoutInfo
             val total = info.totalItemsCount
             val viewportEndOffset = info.viewportEndOffset
 
-            println("Bottom Offset: $viewportEndOffset, bottomGapDp: $bottomGapDp")
+            visibleItemsInfo.forEach {
+                println("LaunchedEffect index: ${it.index}," +
+                        " size: ${it.size}, offset: ${it.offset}")
+            }
 
+            println(
+                "Bottom Offset: $viewportEndOffset, " +
+                        "bottomGapDp: $bottomGapDp"
+            )
 
             println(
                 "LaunchedEffect " +
@@ -245,7 +254,6 @@ fun ChatScreen(
                     listState.animateScrollToItem(lastIndex)
                 }
 
-                awaitFrame()
                 if (lastItem != null) {
                     val lastBottom = lastItem.size
                     val gap = viewportEndOffset - lastBottom
@@ -264,15 +272,14 @@ fun ChatScreen(
 
                     try {
                         println("FIRST Scroll $messageStatus")
-                        awaitFrame()
                         listState.animateScrollToItem(lastIndex)
+                        println("FIRST Scroll Completed $messageStatus")
                     } catch (e: Exception) {
-                        println("First Exception: ${e.message}")
+                        println("FIRST scroll Exception: ${e.message}, status: $messageStatus")
                     }
                 } else {
                     try {
                         println("SECOND scroll $messageStatus")
-                        awaitFrame()
                         listState.animateScrollToItem(lastIndex)
                     } catch (e: Exception) {
                         println("Second Exception: ${e.message}")
@@ -345,14 +352,14 @@ fun ChatScreen(
                         Modifier
                             .border(2.dp, Color.Cyan)
                             .drawBehind {
-//                                if (messages.size > 2 && index == messages.lastIndex - 1) {
-//                                    val viewportEndOffset = listState.layoutInfo.viewportEndOffset
-//                                    println(
-//                                        "🔥 drawBehind index: $index, " +
-//                                                "height: ${size.height}, " +
-//                                                "viewportEndOffset: $viewportEndOffset"
-//                                    )
-//                                }
+                                if (messages.size > 2 && index == messages.lastIndex - 1) {
+                                    val viewportEndOffset = listState.layoutInfo.viewportEndOffset
+                                    println(
+                                        "🔥 drawBehind index: $index, " +
+                                                "height: ${size.height}, " +
+                                                "viewportEndOffset: $viewportEndOffset"
+                                    )
+                                }
                             }
                     } else {
                         Modifier.border(2.dp, Color.Blue)

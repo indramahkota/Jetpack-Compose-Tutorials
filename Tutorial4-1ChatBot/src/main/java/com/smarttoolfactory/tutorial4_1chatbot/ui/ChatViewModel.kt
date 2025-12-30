@@ -140,7 +140,7 @@ class ChatViewModel @Inject constructor(
                 }
             }
 
-            repeat(3) {
+            repeat(5) {
                 awaitFrame()
             }
 

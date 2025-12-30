@@ -16,7 +16,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -93,10 +92,10 @@ internal fun ChatTextField(
         FocusRequester()
     },
     onClick: () -> Unit,
-    button: @Composable ()-> Unit  = {
+    button: @Composable () -> Unit = {
         IconButton(
             modifier = Modifier
-                .padding(horizontal = 8.dp)
+                .padding(horizontal = 4.dp)
                 .size(40.dp),
             shape = CircleShape,
             colors = IconButtonDefaults.iconButtonColors(
@@ -123,7 +122,7 @@ internal fun ChatTextField(
         shadowElevation = 1.dp
     ) {
         Row(
-            modifier = Modifier.padding(vertical = 8.dp),
+            modifier = Modifier.padding(vertical = 4.dp),
             verticalAlignment = Alignment.Bottom
         ) {
             Box(
@@ -154,7 +153,7 @@ internal fun ChatTextField(
                 )
             }
 
-          button()
+            button()
         }
     }
 }
