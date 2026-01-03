@@ -55,7 +55,7 @@ fun TrailFadeInText1Preview() {
     }
 
     Column {
-        TrailFadeInText2(chunkText)
+        TrailFadeInText(chunkText)
         Spacer(modifier = Modifier.weight(1f))
 
         OutlinedTextField(
@@ -79,7 +79,7 @@ fun TrailFadeInText1Preview() {
 }
 
 @Composable
-private fun TrailFadeInText2(text: String) {
+private fun TrailFadeInText(text: String) {
     var startIndex by remember {
         mutableIntStateOf(0)
     }
