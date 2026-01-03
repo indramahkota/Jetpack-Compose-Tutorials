@@ -27,50 +27,77 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlin.coroutines.cancellation.CancellationException
 
-fun Flow<String>.chunkWordsWithDelay(
-    maxWords: Int = 10,
-    delayMillis: Long = 300L
+fun List<String>.toWordFlow(
+    delayMillis: Long = 100,
+    wordsPerEmission: Int = 1
 ): Flow<String> = flow {
-    val buffer = mutableListOf<String>()
+    val chunks = mutableListOf<String>()
 
-    collect { delta ->
-        val words = delta
-            .split(Regex("\\s+"))
-            .filter { it.isNotBlank() }
+    // First, collect all chunks (split only on spaces, keep everything else)
+    forEach { chunk ->
+        var i = 0
+        while (i < chunk.length) {
+            when {
+                chunk[i] == ' ' -> {
+                    chunks.add(" ")
+                    i++
+                }
 
-        for (word in words) {
-            buffer.add(word)
-
-            if (buffer.size == maxWords) {
-                emit(buffer.joinToString(" ") + " ")
-                delay(delayMillis)
-                buffer.clear()
+                else -> {
+                    // Collect everything until we hit a space
+                    val word = StringBuilder()
+                    while (i < chunk.length && chunk[i] != ' ') {
+                        word.append(chunk[i])
+                        i++
+                    }
+                    chunks.add(word.toString())
+                }
             }
         }
     }
 
-    // Flush remaining words on completion
-    if (buffer.isNotEmpty()) {
-        emit(buffer.joinToString(" "))
-        delay(delayMillis)
+    // Emit in groups
+    var wordCount = 0
+    val batch = StringBuilder()
+
+    chunks.forEach { chunk ->
+        batch.append(chunk)
+
+        // Count as a word only if it's not just a space
+        if (chunk != " ") {
+            wordCount++
+        }
+
+        if (wordCount >= wordsPerEmission) {
+            emit(batch.toString())
+            delay(delayMillis)
+            batch.clear()
+            wordCount = 0
+        }
+    }
+
+    // Emit remaining
+    if (batch.isNotEmpty()) {
+        emit(batch.toString())
     }
 }
 
-
 @Preview
 @Composable
-fun TrailFadeInTextPreview() {
+private fun TrailFadeInTextPreview() {
     var text by remember {
         mutableStateOf("")
     }
@@ -90,11 +117,10 @@ fun TrailFadeInTextPreview() {
 
     LaunchedEffect(Unit) {
         delay(1000)
-        deltas.asFlow().chunkWordsWithDelay(
-            maxWords = 1,
+        deltas.toWordFlow(
             delayMillis = 60
         ).collect {
-            println("COLLECT: $it")
+            println("Collect: $it")
             chunkText += it
         }
     }
@@ -134,6 +160,31 @@ private fun TrailFadeInText(text: String) {
     }
 
     val scope = rememberCoroutineScope()
+
+//    LaunchedEffect(newList) {
+//
+//        newList.forEachIndexed { index, rectWithAnimation ->
+//            scope.launch {
+//                delay(20L * index)
+//                try {
+//                    rectWithAnimation.animatable.animateTo(
+//                        targetValue = 1f,
+//                        animationSpec = tween(2000, easing = LinearEasing)
+//                    )
+//                    delay(200)
+////                    rectList.remove(rectWithAnimation)
+//                } catch (e: CancellationException) {
+//                    println(
+//                        "CANCELED for " +
+//                                "startIndex: $startIndex, " +
+//                                "index: $index.\n" +
+//                                "message: ${e.message}"
+//                    )
+//                }
+//            }
+//        }
+//    }
+
     Text(
         modifier = Modifier
             .fillMaxWidth()
@@ -177,23 +228,20 @@ private fun TrailFadeInText(text: String) {
 //                        size = Size(animatedWidth, height),
                         blendMode = BlendMode.DstOut
                     )
+
+                    /*
+                        Debug
+                     */
 //                    drawRect(
-//                        color = lerp(
-//                            start = Color.Green,
-//                            stop = Color.Red,
-//                            fraction = progress
-//                        ).copy(alpha = progress),
+//                        color = lerp(Color.Red, Color.Green, progress),
 //                        topLeft = topLeft,
 //                        size = rectSize,
-//                        style = Stroke(4.dp.toPx())
+//                        style = Stroke(1.dp.toPx())
 //                    )
-
                 }
             },
         onTextLayout = { textLayout: TextLayoutResult ->
             val endIndex = text.lastIndex
-
-//            val newCharCount = (endIndex - startIndex).coerceAtLeast(0)
 
             if (text.isNotEmpty()) {
                 val newList: List<RectWithAnimation> =
@@ -207,7 +255,19 @@ private fun TrailFadeInText(text: String) {
                         )
                     }
 
+//                val newList: List<RectWithAnimation> = computeDiffRects(
+//                    layout = textLayout,
+//                    start = startIndex,
+//                    endExclusive = endIndex + 1
+//                ).map {
+//                    RectWithAnimation(
+//                        rect = it
+//                    )
+//                }
+
                 rectList.addAll(newList)
+                startIndex = endIndex + 1
+
                 newList.forEachIndexed { index, rectWithAnimation ->
                     scope.launch {
                         delay(20L * index)
@@ -217,7 +277,7 @@ private fun TrailFadeInText(text: String) {
                                 animationSpec = tween(1000, easing = LinearEasing)
                             )
                             delay(200)
-                            rectList.remove(rectWithAnimation)
+//                            rectList.remove(rectWithAnimation)
                         } catch (e: CancellationException) {
                             println(
                                 "CANCELED for " +
@@ -228,7 +288,6 @@ private fun TrailFadeInText(text: String) {
                             )
                         }
                     }
-                    startIndex = endIndex + 1
                 }
             }
         },

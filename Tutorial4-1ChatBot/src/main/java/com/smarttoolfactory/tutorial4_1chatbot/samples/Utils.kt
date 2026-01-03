@@ -2,7 +2,6 @@ package com.smarttoolfactory.tutorial4_1chatbot.samples
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextLayoutResult
 import kotlin.math.max
@@ -15,7 +14,7 @@ internal fun calculateBoundingRects(
     endIndex: Int
 ): List<Rect> {
 
-    if (startIndex >= endIndex) return emptyList()
+    if (startIndex > endIndex) return emptyList()
 
     val safeStart =
         startIndex.coerceIn(0, (textLayoutResult.layoutInput.text.length - 1).coerceAtLeast(0))
