@@ -199,7 +199,7 @@ fun ChatScreen(
                 if (shouldPin) tickerFlow(120) else emptyFlow()
             }
             .collect {
-//                println("COLLECTING...")
+                println("COLLECTING...")
                 if (messages.isNotEmpty()) {
                     try {
                         listState.scrollToItem(messages.lastIndex, Int.MAX_VALUE)

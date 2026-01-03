@@ -4,6 +4,7 @@ import com.smarttoolfactory.tutorial4_1chatbot.data.model.SseMessage
 import kotlinx.coroutines.channels.awaitClose
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -38,7 +39,10 @@ class ChatSseDataSourceImpl @Inject constructor(
                     data: String
                 ) {
 //                    println("🔥ChatSseDataSourceImpl onEvent() id: $id, type: $type\n$data")
-                    trySend(SseMessage.Event(type = type, data = data))
+                 val result =   trySend(SseMessage.Event(type = type, data = data))
+                    if (result.isFailure){
+                        println("🔥ChatSseDataSourceImpl onEvent() FAILURE id: $id, type: $type\n$data")
+                    }
                 }
 
                 override fun onFailure(
@@ -66,5 +70,5 @@ class ChatSseDataSourceImpl @Inject constructor(
             println("😱ChatSseDataSourceImpl Flow awaitClose")
             eventSource.cancel()
         }
-    }
+    }.buffer(1024)
 }
