@@ -2,7 +2,6 @@ package com.smarttoolfactory.tutorial4_1chatbot.samples
 
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,10 +23,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
+import com.smarttoolfactory.tutorial4_1chatbot.ui.component.indicator.scale
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -35,7 +36,6 @@ import kotlinx.coroutines.launch
 @Preview
 @Composable
 fun BlurRevealTextPreview() {
-
     Column(
         modifier = Modifier
             .systemBarsPadding()
@@ -43,12 +43,16 @@ fun BlurRevealTextPreview() {
             .padding(32.dp)
     ) {
 
-        BlurRevealText(
-            text = "Lorem Ipsum\n is simply **dummy** çöüğı<>₺ş- text of the printing and typesetting industry.\n" +
+        val text =
+            "Lorem Ipsum\n is simply **dummy** çöüğı<>₺ş- text of the printing and typesetting industry.\n" +
                     "Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, " +
                     "when an unknown printer took a galley of type and scrambled " +
                     "it to make a type specimen book. It has survived not only five centuries, but " +
                     "also the leap into electronic typesetting, remaining essentially unchanged. "
+
+        BlurRevealText(
+            text = text,
+            style = TextStyle.Default.copy(fontSize = 20.sp)
         )
     }
 }
@@ -57,12 +61,12 @@ fun BlurRevealTextPreview() {
 @Composable
 fun BlurRevealText(
     modifier: Modifier = Modifier,
-    text: String
+    text: String,
+    style: TextStyle = TextStyle.Default
 ) {
     val rectList = remember {
         mutableStateListOf<RectWithAnimation>()
     }
-
 
     LaunchedEffect(rectList) {
         delay(1000)
@@ -85,74 +89,62 @@ fun BlurRevealText(
             delay((duration * .9f).toLong())
         }
     }
-
-
-    Column {
-        Box(modifier.border(2.dp, Color.Red)) {
-            Text(
-                modifier = Modifier.alpha(0f),
-                onTextLayout = {
-                    rectList.clear()
-                    rectList.addAll(
-                        computeDiffRects(
-                            layout = it,
-                            start = 0,
-                            endExclusive = text.length
-                        ).map {
-                            RectWithAnimation(rect = it)
-                        }
-                    )
-                },
-                text = text,
-                fontSize = 20.sp
-            )
-
-            rectList.forEach { rectWithAnimation ->
-
-                val alpha = rectWithAnimation.animatable.value
-                val rect = rectWithAnimation.rect
-                val rectSize = rect.size
-                Text(
-                    modifier = modifier
-                        .graphicsLayer {
-                            compositingStrategy = CompositingStrategy.Offscreen
-                        }
-                        .blur((scale(.3f, 1f, alpha, 6f, 0f)).dp)
-                        .drawWithContent {
-                            clipRect(
-                                top = rect.top,
-                                left = rect.left,
-                                bottom = rect.bottom,
-                                right = rect.right
-                            ) {
-                                this@drawWithContent.drawContent()
-
-//                                drawRect(
-//                                    color = Color.White.copy(1-alpha),
-//                                    topLeft = rect.topLeft,
-//                                    size = rect.size,
-//                                    blendMode = BlendMode.DstOut
-//                                )
-
-                                drawRect(
-                                    color = Color.White,
-                                    topLeft = Offset(
-                                        alpha * rectSize.width,
-                                        rect.top
-                                    ),
-                                    size = Size(
-                                        width = (1 - alpha) * rectSize.width,
-                                        height = rectSize.height
-                                    ),
-                                    blendMode = BlendMode.DstOut
-                                )
-                            }
-                        },
-                    text = text,
-                    fontSize = 20.sp
+    Box(modifier) {
+        Text(
+            modifier = Modifier.alpha(0f),
+            onTextLayout = {
+                rectList.clear()
+                rectList.addAll(
+                    computeDiffRects(
+                        layout = it,
+                        start = 0,
+                        endExclusive = text.length
+                    ).map {
+                        RectWithAnimation(rect = it)
+                    }
                 )
+            },
+            text = text,
+            style = style
+        )
 
-            }
+        rectList.forEach { rectWithAnimation ->
+
+            val alpha = rectWithAnimation.animatable.value
+            val rect = rectWithAnimation.rect
+            val rectSize = rect.size
+            Text(
+                modifier = modifier
+                    .graphicsLayer {
+                        compositingStrategy = CompositingStrategy.Offscreen
+                    }
+                    .blur((scale(.3f, 1f, alpha, 6f, 0f)).dp)
+                    .drawWithContent {
+                        clipRect(
+                            top = rect.top,
+                            left = rect.left,
+                            bottom = rect.bottom,
+                            right = rect.right
+                        ) {
+                            this@drawWithContent.drawContent()
+
+                            drawRect(
+                                color = Color.White,
+                                topLeft = Offset(
+                                    alpha * rectSize.width,
+                                    rect.top
+                                ),
+                                size = Size(
+                                    width = (1 - alpha) * rectSize.width,
+                                    height = rectSize.height
+                                ),
+                                blendMode = BlendMode.DstOut
+                            )
+                        }
+                    },
+                text = text,
+                style = style
+            )
         }
     }
 }
