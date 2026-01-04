@@ -1,6 +1,5 @@
 package com.smarttoolfactory.tutorial4_1chatbot.samples
 
-import android.R.attr.end
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.LinearEasing
@@ -8,7 +7,9 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -23,23 +24,20 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.BlendMode
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlin.coroutines.cancellation.CancellationException
@@ -154,7 +152,7 @@ fun String.toWordFlow(
 
 @Preview
 @Composable
-private fun TrailFadeInTextPreview() {
+private fun TrailFadeInSequentialChannelSequentialSharedFlowTextPreview() {
     var text by remember {
         mutableStateOf("")
     }
@@ -182,8 +180,28 @@ private fun TrailFadeInTextPreview() {
         }
     }
 
-    Column {
-        TrailFadeInText(chunkText)
+    Column(
+        modifier = Modifier.systemBarsPadding()
+    ) {
+        TrailFadeInText(
+            text = chunkText,
+            modifier = Modifier.fillMaxWidth().height(160.dp)
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        TrailFadeInSequentialChannelText(
+            text = chunkText,
+            modifier = Modifier.fillMaxWidth().height(160.dp)
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        TrailFadeInSequentialSharedFlowText(
+            text = chunkText,
+            modifier = Modifier.fillMaxWidth().height(160.dp)
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        TrailFadeInTextThatLags(
+            text = chunkText,
+            modifier = Modifier.fillMaxWidth().height(160.dp)
+        )
         Spacer(modifier = Modifier.weight(1f))
 
         OutlinedTextField(
@@ -208,6 +226,7 @@ private fun TrailFadeInTextPreview() {
 
 @Composable
 private fun TrailFadeInText(
+    modifier: Modifier = Modifier,
     text: String,
     start: Int = 0,
     end: Int = text.lastIndex,
@@ -228,34 +247,8 @@ private fun TrailFadeInText(
 
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(rectList.size) {
-
-        println("LaunchedEffect rect size: ${rectList.size}")
-//        newList.forEachIndexed { index, rectWithAnimation ->
-//            scope.launch {
-//                delay(20L * index)
-//                try {
-//                    rectWithAnimation.animatable.animateTo(
-//                        targetValue = 1f,
-//                        animationSpec = tween(2000, easing = LinearEasing)
-//                    )
-//                    delay(200)
-////                    rectList.remove(rectWithAnimation)
-//                } catch (e: CancellationException) {
-//                    println(
-//                        "CANCELED for " +
-//                                "startIndex: $startIndex, " +
-//                                "index: $index.\n" +
-//                                "message: ${e.message}"
-//                    )
-//                }
-//            }
-//        }
-    }
-
     Text(
-        modifier = Modifier
-            .fillMaxWidth()
+        modifier = modifier
             .graphicsLayer {
                 compositingStrategy = CompositingStrategy.Offscreen
             }
@@ -323,6 +316,237 @@ private fun TrailFadeInText(
     )
 }
 
+@Composable
+private fun TrailFadeInSequentialChannelText(
+    modifier: Modifier = Modifier,
+    text: String,
+    start: Int = 0,
+    end: Int = text.lastIndex,
+    style: TextStyle = TextStyle.Default
+) {
+    var startIndex by remember { mutableIntStateOf(start) }
+    var endIndex by remember { mutableIntStateOf(end) }
+
+    val rectList = remember { mutableStateListOf<RectWithAnimation>() }
+
+    // A queue of "new rect batches" coming from onTextLayout
+    val rectBatchChannel = remember {
+        Channel<List<RectWithAnimation>>(
+            capacity = Channel.UNLIMITED
+        )
+    }
+
+    // One long-lived consumer: never restarted -> never cancels previous work due to new layouts
+    LaunchedEffect(Unit) {
+
+        for (batch in rectBatchChannel) {
+
+            println("LaunchedEffect Batch size: ${batch.size}")
+            // If you want per-batch staggering:
+            batch.forEachIndexed { index, rwa: RectWithAnimation ->
+                // Sequential processing (stable, predictable)
+                try {
+                    rwa.animatable.animateTo(
+                        targetValue = 1f,
+                        animationSpec = tween(100, easing = LinearEasing)
+                    )
+                    // rectList.remove(rwa) // optional cleanup
+                } catch (e: CancellationException) {
+                    // Only cancelled if the composable leaves composition
+                    println(
+                        "CANCELED for " +
+                                "startIndex: $startIndex, " +
+                                "endIndex: $endIndex, " +
+                                "index: $index.\n" +
+                                "message: ${e.message}"
+                    )
+                }
+            }
+        }
+    }
+
+    Text(
+        modifier = modifier
+            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+            .drawWithContent {
+                drawContent()
+                drawFadeInRects(rectList)
+            },
+        onTextLayout = { textLayout ->
+            endIndex = text.lastIndex
+
+            val newRects = calculateBoundingRects(
+                textLayoutResult = textLayout,
+                startIndex = startIndex,
+                endIndex = endIndex
+            ).map { RectWithAnimation(rect = it) }
+
+            startIndex = endIndex + 1
+
+            // Mutate UI state here (main thread) so rects appear immediately
+            rectList.addAll(newRects)
+
+            // Enqueue animation work (never restarts/cancels consumer)
+            rectBatchChannel.trySend(newRects)
+        },
+        text = text,
+        style = style
+    )
+}
+
+@Composable
+private fun TrailFadeInSequentialSharedFlowText(
+    modifier: Modifier = Modifier,
+    text: String,
+    start: Int = 0,
+    end: Int = text.lastIndex,
+    style: TextStyle = TextStyle.Default
+) {
+    var startIndex by remember { mutableIntStateOf(start) }
+    var endIndex by remember { mutableIntStateOf(end) }
+
+    val rectList = remember { mutableStateListOf<RectWithAnimation>() }
+
+    val rectSharedFlow = remember {
+        MutableSharedFlow<List<RectWithAnimation>>(
+            replay = 0,
+            extraBufferCapacity = 64,
+            onBufferOverflow = BufferOverflow.SUSPEND
+        )
+    }
+
+    LaunchedEffect(Unit) {
+        rectSharedFlow.collect { batch ->
+            batch.forEachIndexed { index, rwa ->
+                rwa.animatable.animateTo(
+                    targetValue = 1f,
+                    animationSpec = tween(100, easing = LinearEasing)
+                )
+            }
+        }
+    }
+
+    Text(
+        modifier = modifier
+            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+            .drawWithContent {
+                drawContent()
+                drawFadeInRects(rectList)
+            },
+        onTextLayout = { layout ->
+            endIndex = text.lastIndex
+
+            val newRects = calculateBoundingRects(
+                textLayoutResult = layout,
+                startIndex = startIndex,
+                endIndex = endIndex
+            ).map {
+                RectWithAnimation(rect = it)
+            }
+
+            startIndex = endIndex + 1
+
+            rectList.addAll(newRects)
+            rectSharedFlow.tryEmit(newRects)
+        },
+        text = text,
+        style = style
+    )
+}
+
+/*
+    This one lags one frame because of getting Rect list in LaunchedEffect instead of
+    onTextLayout. LaunchedEffect is called in next frame after TextLayoutResult is assigned to
+    MutableState
+ */
+@Composable
+private fun TrailFadeInTextThatLags(
+    modifier: Modifier = Modifier,
+    text: String,
+    start: Int = 0,
+    end: Int = text.lastIndex,
+    style: TextStyle = TextStyle.Default
+) {
+
+    var startIndex by remember {
+        mutableIntStateOf(start)
+    }
+
+    var endIndex by remember {
+        mutableIntStateOf(end)
+    }
+
+    val rectList = remember {
+        mutableStateListOf<RectWithAnimation>()
+    }
+
+    val scope = rememberCoroutineScope()
+
+    var result by remember {
+        mutableStateOf<TextLayoutResult?>(null)
+    }
+
+    LaunchedEffect(result) {
+        result?.let { textLayout ->
+            // If rects are not added in onTextLayout, like LaunchedEffect etc, it lags
+            // behind and some deltas are shown since rectangle lag behind them.
+
+            val newList: List<RectWithAnimation> =
+                calculateBoundingRects(
+                    textLayoutResult = textLayout,
+                    startIndex = startIndex,
+                    endIndex = endIndex
+                ).map {
+                    RectWithAnimation(
+                        rect = it
+                    )
+                }
+
+            rectList.addAll(newList)
+            startIndex = endIndex + 1
+
+            newList.forEachIndexed { index, rectWithAnimation ->
+                scope.launch {
+                    delay(20L * index)
+                    try {
+                        rectWithAnimation.animatable.animateTo(
+                            targetValue = 1f,
+                            animationSpec = tween(1000, easing = LinearEasing)
+                        )
+                        delay(60)
+//                        rectList.remove(rectWithAnimation)
+                    } catch (e: CancellationException) {
+                        println(
+                            "CANCELED for " +
+                                    "startIndex: $startIndex, " +
+                                    "endIndex: $endIndex, " +
+                                    "index: $index.\n" +
+                                    "message: ${e.message}"
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    Text(
+        modifier = modifier
+            .graphicsLayer {
+                compositingStrategy = CompositingStrategy.Offscreen
+            }
+            .drawWithContent {
+                drawContent()
+                drawFadeInRects(rectList)
+            },
+        onTextLayout = { textLayout: TextLayoutResult ->
+            endIndex = text.lastIndex
+            result = textLayout
+        },
+        text = text,
+        style = style
+    )
+}
+
 private fun ContentDrawScope.drawFadeInRects(rectList: List<RectWithAnimation>) {
     rectList.forEachIndexed { _, rectWithAnimation ->
 
@@ -369,7 +593,7 @@ private fun ContentDrawScope.drawFadeInRects(rectList: List<RectWithAnimation>) 
             color = Color.Red.copy(1 - progress),
             topLeft = topLeft,
             size = rectSize,
-            blendMode = BlendMode.DstOut
+//            blendMode = BlendMode.DstOut
         )
 
         // For Debugging
