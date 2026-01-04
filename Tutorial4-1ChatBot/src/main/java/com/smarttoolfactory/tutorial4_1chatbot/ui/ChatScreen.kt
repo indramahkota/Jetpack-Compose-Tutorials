@@ -3,7 +3,6 @@
 package com.smarttoolfactory.tutorial4_1chatbot.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,7 +29,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -47,7 +45,6 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -55,7 +52,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.smarttoolfactory.tutorial4_1chatbot.ui.component.button.JumpToBottomButton
 import com.smarttoolfactory.tutorial4_1chatbot.ui.component.input.ChatTextField
@@ -191,29 +187,48 @@ fun ChatScreen(
             }
     }
 
+    // After message is completed of failed wait for one frame and scroll
+    // to bottom of last message to be fully be visible if user is alread at the bottom
     LaunchedEffect(messageStatus) {
-        if (messageStatus != MessageStatus.Streaming) return@LaunchedEffect
-        snapshotFlow { autoScrollEnabled && isAtBottom && !listState.isScrollInProgress }
-            .distinctUntilChanged()
-            .flatMapLatest { shouldPin ->
-                if (shouldPin) tickerFlow(120) else emptyFlow()
+        if (
+            messageStatus == MessageStatus.Completed || messageStatus == MessageStatus.Failed) {
+            awaitFrame()
+            if (isAtBottom && autoScrollEnabled) {
+                listState.scrollToItem(messages.lastIndex, Int.MAX_VALUE)
             }
-            .collect {
-                println("COLLECTING...")
-                if (messages.isNotEmpty()) {
-                    try {
-                        listState.scrollToItem(messages.lastIndex, Int.MAX_VALUE)
-                    } catch (e: CancellationException) {
-                        println("FLOW exception ${e.message}")
-                    }
-                }
-            }
+        }
     }
 
+    // If streaming and at the bottom while keyboard is not open and user is not scrolling
+    // scroll to bottom and recollect after tick to check again
+    LaunchedEffect(messageStatus) {
+        if (messageStatus == MessageStatus.Streaming) {
+            snapshotFlow {
+                autoScrollEnabled &&
+                        isAtBottom &&
+                        !listState.isScrollInProgress
+            }
+                .distinctUntilChanged()
+                .flatMapLatest { shouldPin ->
+                    if (shouldPin) tickerFlow(120) else emptyFlow()
+                }
+                .collect {
+                    if (messages.isNotEmpty()) {
+                        try {
+                            listState.scrollToItem(messages.lastIndex, Int.MAX_VALUE)
+                        } catch (e: CancellationException) {
+                            println("FLOW exception ${e.message}")
+                        }
+                    }
+                }
+        }
+    }
+
+    // If user prompt is posted but still waiting for reply scroll prompt to top
+    // after measuring bottomGapDp, this ist added to have enough space to scroll, the distance
+    // between prompt's bottom and end of viewport
     LaunchedEffect(messageStatus, isKeyboardOpen) {
-
         if (messageStatus != MessageStatus.Queued || isKeyboardOpen) return@LaunchedEffect
-
         snapshotFlow {
             listState.layoutInfo.visibleItemsInfo
         }.collect { visibleItemsInfo ->
@@ -224,34 +239,11 @@ fun ChatScreen(
             val total = info.totalItemsCount
             val viewportEndOffset = info.viewportEndOffset
 
-            visibleItemsInfo.forEach {
-                println("LaunchedEffect index: ${it.index}," +
-                        " size: ${it.size}, offset: ${it.offset}")
-            }
-
-            println(
-                "Bottom Offset: $viewportEndOffset, " +
-                        "bottomGapDp: $bottomGapDp"
-            )
-
-            println(
-                "LaunchedEffect " +
-                        "status: $messageStatus, " +
-                        "viewportEndOffset: $viewportEndOffset"
-            )
-
             if (total > 2) {
                 val lastIndex = total - 2
 
                 val lastItem = visibleItemsInfo.firstOrNull {
                     it.index == lastIndex
-                }
-
-                // If new prompt is outside of lazy column, first push it to bottom of LazyColumn
-                // for it to be visible to start measuring space needed to pust it to top
-                if (lastItem == null) {
-                    println("invoke pre-scroll")
-                    listState.animateScrollToItem(lastIndex)
                 }
 
                 if (lastItem != null) {
@@ -278,12 +270,10 @@ fun ChatScreen(
                         println("FIRST scroll Exception: ${e.message}, status: $messageStatus")
                     }
                 } else {
-                    try {
-                        println("SECOND scroll $messageStatus")
-                        listState.animateScrollToItem(lastIndex)
-                    } catch (e: Exception) {
-                        println("Second Exception: ${e.message}")
-                    }
+                    // If new prompt is outside of lazy column, first push it to bottom of LazyColumn
+                    // for it to be visible to start measuring space needed to push it to top
+                    println("invoke pre-scroll")
+                    listState.animateScrollToItem(lastIndex)
                 }
             }
         }
@@ -294,17 +284,18 @@ fun ChatScreen(
             .background(backgroundColor)
             .imePadding()
     ) {
-        val lastMessage = messages.lastOrNull()
 
-        Text(
-            modifier = Modifier
-                .padding(horizontal = 8.dp, vertical = 40.dp),
-            fontSize = 16.sp,
-            color = Color.Red,
-            text = "STATUS: ${lastMessage?.messageStatus} index: ${messages.lastIndex}\n" +
-                    "isAtBottom: $isAtBottom, autoScroll: $autoScrollEnabled\n" +
-                    "scrollState: $uiScrollState"
-        )
+//        Text(
+//            modifier = Modifier
+//                .padding(horizontal = 8.dp, vertical = 100.dp),
+//            fontSize = 16.sp,
+//            color = Color.Red,
+//            text = "STATUS: $messageStatus " +
+//                    "index: ${messages.lastIndex}\n" +
+//                    "isAtBottom: $isAtBottom, " +
+//                    "autoScroll: $autoScrollEnabled\n" +
+//                    "messageStatus: $messageStatus"
+//        )
 
         Column(
             Modifier
@@ -327,7 +318,7 @@ fun ChatScreen(
         ) {
 
             LazyColumn(
-                modifier = Modifier.fillMaxSize().border(4.dp, Color.Gray),
+                modifier = Modifier.fillMaxSize(),
                 state = listState,
                 contentPadding = PaddingValues(
                     top = contentPaddingTop + topAppbarHeight,
@@ -337,7 +328,7 @@ fun ChatScreen(
             ) {
                 itemsIndexed(
                     items = messages,
-                    contentType = { index: Int, message: Message ->
+                    contentType = { _: Int, message: Message ->
                         message.messageStatus
                     },
                     key = { _: Int, message: Message ->
@@ -347,22 +338,24 @@ fun ChatScreen(
                     val modifier = if (msg.role == Role.Assistant &&
                         messages.lastIndex == index
                     ) {
-                        Modifier.heightIn(bottomGapDp).border(2.dp, Color.Magenta)
+                        Modifier.heightIn(bottomGapDp)
+//                            .border(2.dp, Color.Magenta)
                     } else if (messages.size > 2 && index == messages.lastIndex - 1) {
                         Modifier
-                            .border(2.dp, Color.Cyan)
-                            .drawBehind {
-                                if (messages.size > 2 && index == messages.lastIndex - 1) {
-                                    val viewportEndOffset = listState.layoutInfo.viewportEndOffset
-                                    println(
-                                        "🔥 drawBehind index: $index, " +
-                                                "height: ${size.height}, " +
-                                                "viewportEndOffset: $viewportEndOffset"
-                                    )
-                                }
-                            }
+//                            .border(2.dp, Color.Cyan)
+//                            .drawBehind {
+//                                if (messages.size > 2 && index == messages.lastIndex - 1) {
+//                                    val viewportEndOffset = listState.layoutInfo.viewportEndOffset
+//                                    println(
+//                                        "🔥 drawBehind index: $index, " +
+//                                                "height: ${size.height}, " +
+//                                                "viewportEndOffset: $viewportEndOffset"
+//                                    )
+//                                }
+//                            }
                     } else {
-                        Modifier.border(2.dp, Color.Blue)
+                        Modifier
+//                            .border(2.dp, Color.Blue)
                     }
 
                     MessageRow(
@@ -377,10 +370,7 @@ fun ChatScreen(
         }
 
         TopAppBar(
-            modifier = Modifier.height(topAppbarHeight)
-                .border(2.dp, Color.Red)
-//                .background(brush = topAppbarBrush)
-            ,
+            modifier = Modifier.height(topAppbarHeight).background(brush = topAppbarBrush),
             title = {},
             actions = {
                 IconButton(
@@ -400,7 +390,7 @@ fun ChatScreen(
         InputArea(
             modifier = Modifier
                 .align(Alignment.BottomStart)
-                .border(2.dp, Color.Cyan)
+//                .border(2.dp, Color.Cyan)
                 .background(brush = inputBrush)
                 .padding(bottom = bottomPadding, start = 16.dp, end = 16.dp)
                 .navigationBarsPadding()
