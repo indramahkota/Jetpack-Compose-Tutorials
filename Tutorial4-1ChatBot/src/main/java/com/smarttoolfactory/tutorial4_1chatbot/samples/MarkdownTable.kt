@@ -113,6 +113,7 @@ fun MarkdownTableComposerPreview() {
                         ?.forEach { tableCell ->
                             cell {
                                 MarkdownRichText(tableCell)
+//                                visitChildren(tableCell)
                             }
                         }
                 }
@@ -123,9 +124,10 @@ fun MarkdownTableComposerPreview() {
                     ?.forEach { tableRow ->
                         row {
                             tableRow.filterChildrenType<AstTableCell>()
-                                .forEach { tableCell ->
+                                .forEach { tableCell: AstNode ->
                                     cell {
                                         MarkdownRichText(tableCell)
+//                                        visitChildren(tableCell)
                                     }
                                 }
                         }
@@ -138,14 +140,13 @@ fun MarkdownTableComposerPreview() {
         TableComposer(
             markdown = markdownTable
         ) { astNode, visitChildren ->
-            ChatGptTable(
+            CustomTable(
                 tableRoot = astNode,
                 cellPadding = 16.dp,
                 minCellWidth = 120.dp,
                 borderWidth = 2.dp
             )
         }
-
 
         Text("Custom Table with Columns and Rows", fontSize = 20.sp)
         TableComposer(
@@ -181,6 +182,8 @@ fun MarkdownTableComposerPreview() {
                                         .matchParentSize(),
                                     astNode = tableCell
                                 )
+
+//                                visitChildren(tableCell)
                             }
                         }
                 }
@@ -220,6 +223,8 @@ fun MarkdownTableComposerPreview() {
                                                     .matchParentSize(),
                                                 astNode = tableCell
                                             )
+
+//                                            visitChildren(tableCell)
                                         }
                                     }
                             }
@@ -231,81 +236,86 @@ fun MarkdownTableComposerPreview() {
 }
 
 @Composable
-private fun RichTextScope.ChatGptTable(
+private fun RichTextScope.CustomTable(
     modifier: Modifier = Modifier,
     tableRoot: AstNode,
-    cellPadding: Dp,
-    borderWidth: Dp,
-    minCellWidth: Dp
+    cellPadding: Dp = 0.dp,
+    borderWidth: Dp = 0.dp,
+    minCellWidth: Dp = 120.dp
 ) {
     val borderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
     val headerBg = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f)
 
     // Collect rows in display order: header rows first (if any), then body rows.
-    val headerRows: Sequence<AstNode> = tableRoot.children()
-        .firstOrNull { it.type == AstTableHeader }
-        ?.children()
-        ?.filter { it.type == AstTableRow }
-        .orEmpty()
+    val headerRows: Sequence<AstNode> = remember(tableRoot) {
+        tableRoot.children()
+            .firstOrNull { it.type == AstTableHeader }
+            ?.children()
+            ?.filter { it.type == AstTableRow }
+            .orEmpty()
+    }
 
-    val bodyRows: Sequence<AstNode> = tableRoot.children()
-        .firstOrNull { it.type == AstTableBody }
-        ?.children()
-        ?.filter { it.type == AstTableRow }
-        .orEmpty()
+    val bodyRows: Sequence<AstNode> = remember(tableRoot) {
+        tableRoot.children()
+            .firstOrNull { it.type == AstTableBody }
+            ?.children()
+            ?.filter { it.type == AstTableRow }
+            .orEmpty()
+    }
 
-    val allRows: Sequence<AstNode> = headerRows + bodyRows
-    if (allRows.toList().isEmpty()) return
+    val allRows: Sequence<AstNode> = remember(headerRows, bodyRows) {
+        headerRows + bodyRows
+    }
 
-    val columnCount: Int = allRows.maxOf { row ->
-        row.children().count { it.type is AstTableCell }
-    }.coerceAtLeast(1)
+    if (allRows.count() == 0) return
+
+    val columnCount: Int = remember(allRows) {
+        allRows.maxOf { row ->
+            row.children().count { it.type is AstTableCell }
+        }.coerceAtLeast(1)
+    }
 
     // Horizontal scroll to match ChatGPT behavior on narrow screens / many columns.
-    Row(
+    Column(
         modifier = modifier
+            .border(borderWidth, borderColor, RoundedCornerShape(16.dp)) // outer border
             .horizontalScroll(rememberScrollState())
     ) {
-        Column(
-            modifier = Modifier
-                .border(borderWidth, borderColor, RoundedCornerShape(16.dp)) // outer border
-        ) {
-            allRows.forEachIndexed { rowIndex, rowNode ->
-                val isHeaderRow = rowIndex < headerRows.toList().size
+        allRows.forEachIndexed { rowIndex, rowNode ->
+            val isHeaderRow = rowIndex < headerRows.count()
 
-                Row {
-                    val cells: List<AstNode> =
-                        rowNode.children().filter { it.type is AstTableCell }.toList()
+            Row {
+                val cells: List<AstNode> =
+                    rowNode.children().filter { it.type is AstTableCell }.toList()
 
-                    // Pad missing cells so borders stay aligned.
-                    for (col in 0 until columnCount) {
-                        val cellNode: AstNode? = cells.getOrNull(col)
+                // Pad missing cells so borders stay aligned.
+                for (col in 0 until columnCount) {
+                    val cellNode: AstNode? = cells.getOrNull(col)
 
-                        val cellType: AstTableCell? = (cellNode?.type as? AstTableCell)
-                        val isHeaderCell = isHeaderRow || (cellType?.header == true)
+                    val cellType: AstTableCell? = (cellNode?.type as? AstTableCell)
+                    val isHeaderCell = isHeaderRow || (cellType?.header == true)
 
-                        val alignment = when (cellType?.alignment) {
-                            AstTableCellAlignment.LEFT -> Alignment.CenterStart
-                            AstTableCellAlignment.CENTER -> Alignment.Center
-                            AstTableCellAlignment.RIGHT -> Alignment.CenterEnd
-                            else -> Alignment.CenterStart
-                        }
+                    val alignment = when (cellType?.alignment) {
+                        AstTableCellAlignment.LEFT -> Alignment.CenterStart
+                        AstTableCellAlignment.CENTER -> Alignment.Center
+                        AstTableCellAlignment.RIGHT -> Alignment.CenterEnd
+                        else -> Alignment.CenterStart
+                    }
 
-                        Box(
-                            modifier = Modifier
-                                .widthIn(min = minCellWidth)
-                                .defaultMinSize(minHeight = 44.dp)
-                                .background(if (isHeaderCell) headerBg else MaterialTheme.colorScheme.surface)
-                                .padding(cellPadding),
-                            contentAlignment = alignment
-                        ) {
-                            if (cellNode != null) {
-                                MarkdownRichText(
-                                    modifier = Modifier
-                                        .matchParentSize(),
-                                    astNode = cellNode
-                                )
-                            }
+                    Box(
+                        modifier = Modifier
+                            .widthIn(min = minCellWidth)
+                            .defaultMinSize(minHeight = 44.dp)
+                            .background(if (isHeaderCell) headerBg else MaterialTheme.colorScheme.surface)
+                            .padding(cellPadding),
+                        contentAlignment = alignment
+                    ) {
+                        if (cellNode != null) {
+                            MarkdownRichText(
+                                modifier = Modifier
+                                    .matchParentSize(),
+                                astNode = cellNode
+                            )
                         }
                     }
                 }
@@ -331,7 +341,7 @@ internal fun TableComposer(
             override fun predicate(astBlockNodeType: AstBlockNodeType): Boolean {
                 // Intercept only tables
                 val isTable = astBlockNodeType == AstTableRoot
-                println("isTable: $isTable")
+                println("isTable: $isTable, astBlockNodeType: $astBlockNodeType")
                 return isTable
             }
 
