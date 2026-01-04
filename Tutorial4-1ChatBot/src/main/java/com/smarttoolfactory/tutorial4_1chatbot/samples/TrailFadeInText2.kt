@@ -1,5 +1,6 @@
 package com.smarttoolfactory.tutorial4_1chatbot.samples
 
+import android.R.attr.end
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.LinearEasing
@@ -22,18 +23,21 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -95,6 +99,59 @@ fun List<String>.toWordFlow(
     }
 }
 
+fun String.toWordFlow(
+    delayMillis: Long = 100,
+    wordsPerEmission: Int = 1
+): Flow<String> = flow {
+    val chunks = mutableListOf<String>()
+
+    // Collect all chunks (split only on spaces, keep everything else)
+    var i = 0
+    while (i < length) {
+        when {
+            this@toWordFlow[i] == ' ' -> {
+                chunks.add(" ")
+                i++
+            }
+
+            else -> {
+                // Collect everything until we hit a space
+                val word = StringBuilder()
+                while (i < length && this@toWordFlow[i] != ' ') {
+                    word.append(this@toWordFlow[i])
+                    i++
+                }
+                chunks.add(word.toString())
+            }
+        }
+    }
+
+    // Emit in groups
+    var wordCount = 0
+    val batch = StringBuilder()
+
+    chunks.forEach { chunk ->
+        batch.append(chunk)
+
+        // Count as a word only if it's not just a space
+        if (chunk != " ") {
+            wordCount++
+        }
+
+        if (wordCount >= wordsPerEmission) {
+            emit(batch.toString())
+            delay(delayMillis)
+            batch.clear()
+            wordCount = 0
+        }
+    }
+
+    // Emit remaining
+    if (batch.isNotEmpty()) {
+        emit(batch.toString())
+    }
+}
+
 @Preview
 @Composable
 private fun TrailFadeInTextPreview() {
@@ -120,7 +177,7 @@ private fun TrailFadeInTextPreview() {
         deltas.toWordFlow(
             delayMillis = 60
         ).collect {
-            println("Collect: $it")
+//            println("Collect: $it")
             chunkText += it
         }
     }
@@ -150,9 +207,19 @@ private fun TrailFadeInTextPreview() {
 }
 
 @Composable
-private fun TrailFadeInText(text: String) {
+private fun TrailFadeInText(
+    text: String,
+    start: Int = 0,
+    end: Int = text.lastIndex,
+    style: TextStyle = TextStyle.Default
+) {
+
     var startIndex by remember {
-        mutableIntStateOf(text.lastIndex.coerceAtLeast(0))
+        mutableIntStateOf(start)
+    }
+
+    var endIndex by remember {
+        mutableIntStateOf(end)
     }
 
     val rectList = remember {
@@ -161,8 +228,9 @@ private fun TrailFadeInText(text: String) {
 
     val scope = rememberCoroutineScope()
 
-//    LaunchedEffect(newList) {
-//
+    LaunchedEffect(rectList.size) {
+
+        println("LaunchedEffect rect size: ${rectList.size}")
 //        newList.forEachIndexed { index, rectWithAnimation ->
 //            scope.launch {
 //                delay(20L * index)
@@ -183,7 +251,7 @@ private fun TrailFadeInText(text: String) {
 //                }
 //            }
 //        }
-//    }
+    }
 
     Text(
         modifier = Modifier
@@ -193,57 +261,16 @@ private fun TrailFadeInText(text: String) {
             }
             .drawWithContent {
                 drawContent()
-                rectList.forEachIndexed { index, rectWithAnimation ->
-
-                    val progress = rectWithAnimation.animatable.value
-                    val topLeft = rectWithAnimation.rect.topLeft
-                    val rectSize = rectWithAnimation.rect.size
-
-                    val width = rectSize.width
-                    val height = rectSize.height
-                    val posX = topLeft.x + progress * width
-                    val animatedWidth = (1 - progress) * width
-
-                    val brush = Brush.linearGradient(
-                        colors = listOf(
-                            Color.Red.copy((-0.25f + 1f - progress).coerceIn(0f, 1f)),
-                            Color.Red.copy(1f - progress),
-                        ),
-                        start = rectWithAnimation.rect.topLeft,
-                        end = rectWithAnimation.rect.bottomRight,
-                    )
-
-//                    drawRect(
-//                        brush = brush,
-//                        topLeft = topLeft,
-//                        size = rectSize,
-//                        blendMode = BlendMode.DstOut
-//                    )
-
-                    drawRect(
-                        color = Color.Red.copy(1 - progress),
-                        topLeft = topLeft,
-                        size = rectSize,
-//                        topLeft = Offset(posX, topLeft.y),
-//                        size = Size(animatedWidth, height),
-                        blendMode = BlendMode.DstOut
-                    )
-
-                    /*
-                        Debug
-                     */
-//                    drawRect(
-//                        color = lerp(Color.Red, Color.Green, progress),
-//                        topLeft = topLeft,
-//                        size = rectSize,
-//                        style = Stroke(1.dp.toPx())
-//                    )
-                }
+                drawFadeInRects(rectList)
             },
         onTextLayout = { textLayout: TextLayoutResult ->
-            val endIndex = text.lastIndex
+            endIndex = text.lastIndex
 
             if (text.isNotEmpty()) {
+
+                // If rects are not added in onTextLayout, like LaunchedEffect etc, it lags
+                // behind and some deltas are shown since rectangle lag behind them.
+
                 val newList: List<RectWithAnimation> =
                     calculateBoundingRects(
                         textLayoutResult = textLayout,
@@ -276,8 +303,8 @@ private fun TrailFadeInText(text: String) {
                                 targetValue = 1f,
                                 animationSpec = tween(1000, easing = LinearEasing)
                             )
-                            delay(200)
-//                            rectList.remove(rectWithAnimation)
+                            delay(60)
+                            rectList.remove(rectWithAnimation)
                         } catch (e: CancellationException) {
                             println(
                                 "CANCELED for " +
@@ -292,12 +319,70 @@ private fun TrailFadeInText(text: String) {
             }
         },
         text = text,
-        fontSize = 18.sp
+        style = style
     )
+}
+
+private fun ContentDrawScope.drawFadeInRects(rectList: List<RectWithAnimation>) {
+    rectList.forEachIndexed { _, rectWithAnimation ->
+
+        val progress = rectWithAnimation.animatable.value
+        val rect = rectWithAnimation.rect
+        val topLeft = rect.topLeft
+        val rectSize = rect.size
+
+        val rectWidth = rectSize.width
+        val rectHeight = rectSize.height
+        val posX = topLeft.x + progress * rectWidth
+        val animatedWidth = (1 - progress) * rectWidth
+
+        /*
+            These draw rect only work if Animatables are animated sequentially
+            Keep rects in queue at 0 progress are not drawn with rects
+            draw only one with changing alpha or dimensions with color or brush
+         */
+
+//        val brush = Brush.linearGradient(
+//            colors = listOf(
+//                Color.Red.copy((-0.25f + 1f - progress).coerceIn(0f, 1f)),
+//                Color.Red.copy(1f - progress),
+//            ),
+//            start = rect.topLeft,
+//            end = rect.bottomRight,
+//        )
+//
+//        drawRect(
+//            brush = brush,
+//            topLeft = topLeft,
+//            size = rectSize,
+//            blendMode = BlendMode.DstOut
+//        )
+
+//        drawRect(
+//            color = Color.Red.copy(1 - progress),
+//            topLeft = Offset(posX, topLeft.y),
+//            size = Size(animatedWidth, rectHeight),
+//            blendMode = BlendMode.DstOut
+//        )
+
+        drawRect(
+            color = Color.Red.copy(1 - progress),
+            topLeft = topLeft,
+            size = rectSize,
+            blendMode = BlendMode.DstOut
+        )
+
+        // For Debugging
+//        drawRect(
+//            color = lerp(Color.Red, Color.Green, progress),
+//            topLeft = topLeft,
+//            size = rectSize,
+//            style = Stroke(2.dp.toPx())
+//        )
+    }
 }
 
 data class RectWithAnimation(
     val rect: Rect,
     val animatable: Animatable<Float, AnimationVector1D> = Animatable(0f),
-    var alpha: Float = 0f
 )
