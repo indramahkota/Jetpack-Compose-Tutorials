@@ -20,6 +20,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,6 +44,7 @@ import com.halilibo.richtext.markdown.node.AstLink
 import com.halilibo.richtext.markdown.node.AstLinkReferenceDefinition
 import com.halilibo.richtext.markdown.node.AstNode
 import com.halilibo.richtext.markdown.node.AstNodeType
+import com.halilibo.richtext.markdown.node.AstParagraph
 import com.halilibo.richtext.markdown.node.AstSoftLineBreak
 import com.halilibo.richtext.markdown.node.AstStrikethrough
 import com.halilibo.richtext.markdown.node.AstStrongEmphasis
@@ -64,13 +67,30 @@ import com.halilibo.richtext.ui.string.withFormat
 
 @Preview
 @Composable
-fun MarkdownTableComposerPreview() {
+fun MarkdownCustomPreview() {
+    Column(
+        modifier = Modifier.systemBarsPadding().padding(16.dp)
+    ) {
+        CustomComposer(markdown = markdownText) { astNode, visitChildren ->
+
+        }
+    }
+}
+
+@Preview
+@Composable
+fun MarkdownCustomComposerPreview() {
 
     val markdownTable = """
         | Name  | Age |  City    |
         |-------|-----|-------|
         | **Alice** | 25  | New York |
         | Bob   | 30  | London   |
+        
+        | Left-aligned | Center-aligned | Right-aligned |
+        |:-------------|:--------------:|--------------:|
+        | Data 1       |          Data 2         | Data 3        |
+        | Data 4       |         Data 5         | Data 6        |
     """.trimIndent()
 
     Column(
@@ -99,7 +119,7 @@ fun MarkdownTableComposerPreview() {
 
         Text("Custom Table with Table", fontSize = 20.sp)
 
-        TableComposer(
+        CustomComposer(
             markdown = markdownTable
         ) { astNode, visitChildren ->
 
@@ -113,6 +133,7 @@ fun MarkdownTableComposerPreview() {
                         ?.forEach { tableCell ->
                             cell {
                                 MarkdownRichText(tableCell)
+                                // 🔥 visitChildren() omits if text has markdown
 //                                visitChildren(tableCell)
                             }
                         }
@@ -127,6 +148,7 @@ fun MarkdownTableComposerPreview() {
                                 .forEach { tableCell: AstNode ->
                                     cell {
                                         MarkdownRichText(tableCell)
+                                        // 🔥 visitChildren() omits if text has markdown
 //                                        visitChildren(tableCell)
                                     }
                                 }
@@ -137,7 +159,7 @@ fun MarkdownTableComposerPreview() {
 
         Text("Custom Table", fontSize = 20.sp)
 
-        TableComposer(
+        CustomComposer(
             markdown = markdownTable
         ) { astNode, visitChildren ->
             CustomTable(
@@ -149,7 +171,7 @@ fun MarkdownTableComposerPreview() {
         }
 
         Text("Custom Table with Columns and Rows", fontSize = 20.sp)
-        TableComposer(
+        CustomComposer(
             markdown = markdownTable
         ) { astNode, visitChildren ->
 
@@ -182,7 +204,7 @@ fun MarkdownTableComposerPreview() {
                                         .matchParentSize(),
                                     astNode = tableCell
                                 )
-
+                                // 🔥 visitChildren() omits if text has markdown
 //                                visitChildren(tableCell)
                             }
                         }
@@ -224,6 +246,7 @@ fun MarkdownTableComposerPreview() {
                                                 astNode = tableCell
                                             )
 
+                                            // 🔥 visitChildren() omits if text has markdown
 //                                            visitChildren(tableCell)
                                         }
                                     }
@@ -325,24 +348,36 @@ private fun RichTextScope.CustomTable(
 }
 
 @Composable
-internal fun TableComposer(
+private fun CustomComposer(
     markdown: String,
     content: @Composable RichTextScope.(astNode: AstNode, visitChildren: @Composable ((AstNode) -> Unit)) -> Unit
 ) {
-
-    val parser: CommonmarkAstNodeParser = remember {
+    val commonmarkAstNodeParser: CommonmarkAstNodeParser = remember {
         CommonmarkAstNodeParser()
     }
-    val astNode: AstNode = parser.parse(markdown)
 
-    val tableComposer = remember {
+    val astRootNode by produceState<AstNode?>(
+        initialValue = null,
+        key1 = commonmarkAstNodeParser,
+        key2 = markdown
+    ) {
+        value = commonmarkAstNodeParser.parse(markdown)
+    }
+
+    val tableBlockNodeComposer: AstBlockNodeComposer = remember {
         object : AstBlockNodeComposer {
 
             override fun predicate(astBlockNodeType: AstBlockNodeType): Boolean {
-                // Intercept only tables
+                // Intercept tables
                 val isTable = astBlockNodeType == AstTableRoot
-                println("isTable: $isTable, astBlockNodeType: $astBlockNodeType")
-                return isTable
+                // Intercept Text
+                val isText = astBlockNodeType == AstParagraph
+                println(
+                    "isTable: $isTable, " +
+                            "isText: $isText," +
+                            " astBlockNodeType: $astBlockNodeType"
+                )
+                return isTable || isText
             }
 
             @Composable
@@ -350,11 +385,20 @@ internal fun TableComposer(
                 astNode: AstNode,
                 visitChildren: @Composable ((AstNode) -> Unit)
             ) {
-                content(astNode, visitChildren)
+                if (astNode.type is AstTableRoot) {
+                    content(astNode, visitChildren)
+                } else if(astNode.type is AstParagraph){
+                    Box(modifier = Modifier.border(2.dp, Color.Green)){
+                        MarkdownRichText(astNode)
+                    }
+                }
             }
         }
     }
-    RichTextScope.BasicMarkdown(astNode, tableComposer)
+
+    astRootNode?.let { astNode ->
+        RichTextScope.BasicMarkdown(astNode, tableBlockNodeComposer)
+    }
 }
 
 @Composable

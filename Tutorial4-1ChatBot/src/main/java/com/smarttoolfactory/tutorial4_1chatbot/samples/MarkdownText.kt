@@ -9,7 +9,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -28,6 +27,16 @@ import io.noties.markwon.ext.tables.TablePlugin
 
 val markdownText = """
     # Demo
+    
+    ## Demo
+    
+    ### Demo
+    
+    #### Demo
+    
+    ##### Demo
+    
+    ###### Demo
 
     Emphasis, aka italics, with *asterisks* or _underscores_. Strong emphasis, aka bold, with **asterisks** or __underscores__. Combined emphasis with **asterisks and _underscores_**. [Links with two blocks, text in square-brackets, destination is in parentheses.](https://www.example.com). Inline `code` has `back-ticks around` it.
 
@@ -94,22 +103,20 @@ fun MarkdownTextSample() {
             fontWeight = FontWeight.SemiBold
         )
 
-
         RichTextThemeProvider(
-            textStyleProvider = {
-
-                TextStyle(
-                    color = Color.Red
-                )
-            }
+            // Overrides every other style in BasicRichText
+//            textStyleProvider = {
+//                TextStyle(color = Color.Red)
+//            }
         ) {
             BasicRichText(
                 modifier = Modifier.padding(vertical = 16.dp),
-                style = RichTextStyle(
-                  headingStyle = { index: Int, textStyle: TextStyle ->
-                      textStyle.copy(color = Color.Gray)
-                  }
-                )
+                style = RichTextStyle.Default
+//                    .copy(
+//                        headingStyle = { index, textStyle ->
+//                            textStyle
+//                        }
+//                    )
             ) {
                 Markdown(markdownText)
             }
