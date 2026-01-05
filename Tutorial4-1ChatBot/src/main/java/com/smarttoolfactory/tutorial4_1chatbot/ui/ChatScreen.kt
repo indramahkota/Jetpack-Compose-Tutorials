@@ -3,6 +3,7 @@
 package com.smarttoolfactory.tutorial4_1chatbot.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -390,7 +391,7 @@ fun ChatScreen(
         InputArea(
             modifier = Modifier
                 .align(Alignment.BottomStart)
-//                .border(2.dp, Color.Cyan)
+                .border(2.dp, Color.Cyan)
                 .background(brush = inputBrush)
                 .padding(bottom = bottomPadding, start = 16.dp, end = 16.dp)
                 .navigationBarsPadding()

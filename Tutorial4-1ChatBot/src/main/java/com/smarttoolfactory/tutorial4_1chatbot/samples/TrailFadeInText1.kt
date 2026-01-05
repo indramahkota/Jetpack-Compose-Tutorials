@@ -2,8 +2,11 @@ package com.smarttoolfactory.tutorial4_1chatbot.samples
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -20,6 +23,7 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -48,14 +52,19 @@ fun TrailFadeInText1Preview() {
     LaunchedEffect(Unit) {
         delay(1000)
         deltas.forEach {
-            println("Delta: $it")
+//            println("Delta: $it")
             chunkText += it
             delay(1000)
         }
     }
 
-    Column {
-        TrailFadeInText(chunkText)
+    Column(
+        modifier = Modifier.fillMaxSize().systemBarsPadding().padding(16.dp)
+    ) {
+//        TrailFadeInText(text = chunkText)
+
+        TrailFadeInText(text = "Hello\nWorld")
+
         Spacer(modifier = Modifier.weight(1f))
 
         OutlinedTextField(
@@ -79,9 +88,20 @@ fun TrailFadeInText1Preview() {
 }
 
 @Composable
-private fun TrailFadeInText(text: String) {
+private fun TrailFadeInText(
+    modifier: Modifier = Modifier,
+    text: String,
+    start: Int = 0,
+    end: Int = text.lastIndex,
+    style: TextStyle = TextStyle.Default.copy(fontSize = 18.sp)
+) {
+
     var startIndex by remember {
-        mutableIntStateOf(0)
+        mutableIntStateOf(start)
+    }
+
+    var endIndex by remember {
+        mutableIntStateOf(end)
     }
 
     val rectList = remember {
@@ -89,7 +109,7 @@ private fun TrailFadeInText(text: String) {
     }
 
     Text(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .graphicsLayer()
             .drawWithContent {
@@ -104,17 +124,25 @@ private fun TrailFadeInText(text: String) {
                 }
             },
         onTextLayout = { textLayout: TextLayoutResult ->
-            val endIndex = text.lastIndex
+            endIndex = text.lastIndex
 
             if (text.isNotEmpty()) {
 
                 println("Text: $text, startIndex: $startIndex, endIndex: $endIndex")
 
-                val newList: List<RectWithColor> = calculateBoundingRectList(
+                val newList: List<RectWithColor> = calculateBoundingRecWithColortList(
                     textLayoutResult = textLayout,
                     startIndex = startIndex,
                     endIndex = endIndex
                 )
+
+//                val newList: List<RectWithColor> = computeDiffRects(
+//                    layout = textLayout,
+//                    start = startIndex,
+//                    endExclusive = endIndex + 1
+//                ).map {
+//                    RectWithColor(color = randomColor(), rect = it)
+//                }
 
                 rectList.addAll(newList)
 
@@ -122,6 +150,6 @@ private fun TrailFadeInText(text: String) {
             }
         },
         text = text,
-        fontSize = 18.sp
+        style = style
     )
 }

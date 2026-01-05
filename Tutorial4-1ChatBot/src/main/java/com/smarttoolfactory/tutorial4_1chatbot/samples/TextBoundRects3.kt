@@ -101,7 +101,7 @@ fun TextBoundsRect3Preview() {
                     usePrimaryDirection = true
                 )
 
-                val rectList1 = calculateBoundingRectList(
+                val rectList1 = calculateBoundingRecWithColortList(
                     textLayoutResult = textLayout,
                     startIndex = startIndex,
                     endIndex = endIndex

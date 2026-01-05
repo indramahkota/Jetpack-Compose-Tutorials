@@ -1,5 +1,6 @@
 package com.smarttoolfactory.tutorial4_1chatbot.samples
 
+import android.widget.Toast
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
@@ -23,6 +24,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -42,6 +44,8 @@ fun BlurRevealTextPreview() {
             .fillMaxSize()
             .padding(32.dp)
     ) {
+        
+        val context = LocalContext.current
 
         val text =
             "Lorem Ipsum\n is simply **dummy** çöüğı<>₺ş- text of the printing and typesetting industry.\n" +
@@ -52,7 +56,10 @@ fun BlurRevealTextPreview() {
 
         BlurRevealText(
             text = text,
-            style = TextStyle.Default.copy(fontSize = 20.sp)
+            style = TextStyle.Default.copy(fontSize = 20.sp),
+            onComplete = {
+                Toast.makeText(context, "onComplete", Toast.LENGTH_SHORT).show()
+            }
         )
     }
 }
@@ -62,7 +69,8 @@ fun BlurRevealTextPreview() {
 fun BlurRevealText(
     modifier: Modifier = Modifier,
     text: String,
-    style: TextStyle = TextStyle.Default
+    style: TextStyle = TextStyle.Default,
+    onComplete: ()-> Unit = {}
 ) {
     val rectList = remember {
         mutableStateListOf<RectWithAnimation>()
@@ -71,19 +79,24 @@ fun BlurRevealText(
     LaunchedEffect(rectList) {
         delay(1000)
         // Snapshot copy so mutation during iteration won’t crash
-        val items = rectList.toList()
+        val items: List<RectWithAnimation> = rectList.toList()
 
         var duration: Int
-        items.forEach { item ->
-            duration = (1 * item.rect.width).toInt()
+        items.forEach { rectWithAnimation ->
+            duration = (1 * rectWithAnimation.rect.width).toInt()
             launch {
-                item.animatable.animateTo(
+                rectWithAnimation.animatable.animateTo(
                     targetValue = 1f,
                     animationSpec = tween(
                         durationMillis = duration,
                         easing = LinearEasing
                     )
                 )
+                
+                if (rectWithAnimation.endIndex == text.lastIndex){
+                    onComplete()
+                }
+                
             }
 
             delay((duration * .9f).toLong())
@@ -99,8 +112,12 @@ fun BlurRevealText(
                         layout = it,
                         start = 0,
                         endExclusive = text.length
-                    ).map {
-                        RectWithAnimation(rect = it)
+                    ).map { rect ->
+                        RectWithAnimation(
+                            rect = rect,
+                            startIndex = 0,
+                            endIndex = text.length - 1
+                        )
                     }
                 )
             },

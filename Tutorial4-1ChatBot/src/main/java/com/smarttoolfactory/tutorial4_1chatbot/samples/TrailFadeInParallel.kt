@@ -18,6 +18,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -33,126 +34,23 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.channels.BufferOverflow
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlin.coroutines.cancellation.CancellationException
 
-fun List<String>.toWordFlow(
-    delayMillis: Long = 100,
-    wordsPerEmission: Int = 1
-): Flow<String> = flow {
-    val chunks = mutableListOf<String>()
-
-    // First, collect all chunks (split only on spaces, keep everything else)
-    forEach { chunk ->
-        var i = 0
-        while (i < chunk.length) {
-            when {
-                chunk[i] == ' ' -> {
-                    chunks.add(" ")
-                    i++
-                }
-
-                else -> {
-                    // Collect everything until we hit a space
-                    val word = StringBuilder()
-                    while (i < chunk.length && chunk[i] != ' ') {
-                        word.append(chunk[i])
-                        i++
-                    }
-                    chunks.add(word.toString())
-                }
-            }
-        }
-    }
-
-    // Emit in groups
-    var wordCount = 0
-    val batch = StringBuilder()
-
-    chunks.forEach { chunk ->
-        batch.append(chunk)
-
-        // Count as a word only if it's not just a space
-        if (chunk != " ") {
-            wordCount++
-        }
-
-        if (wordCount >= wordsPerEmission) {
-            emit(batch.toString())
-            delay(delayMillis)
-            batch.clear()
-            wordCount = 0
-        }
-    }
-
-    // Emit remaining
-    if (batch.isNotEmpty()) {
-        emit(batch.toString())
-    }
-}
-
-fun String.toWordFlow(
-    delayMillis: Long = 100,
-    wordsPerEmission: Int = 1
-): Flow<String> = flow {
-    val chunks = mutableListOf<String>()
-
-    // Collect all chunks (split only on spaces, keep everything else)
-    var i = 0
-    while (i < length) {
-        when {
-            this@toWordFlow[i] == ' ' -> {
-                chunks.add(" ")
-                i++
-            }
-
-            else -> {
-                // Collect everything until we hit a space
-                val word = StringBuilder()
-                while (i < length && this@toWordFlow[i] != ' ') {
-                    word.append(this@toWordFlow[i])
-                    i++
-                }
-                chunks.add(word.toString())
-            }
-        }
-    }
-
-    // Emit in groups
-    var wordCount = 0
-    val batch = StringBuilder()
-
-    chunks.forEach { chunk ->
-        batch.append(chunk)
-
-        // Count as a word only if it's not just a space
-        if (chunk != " ") {
-            wordCount++
-        }
-
-        if (wordCount >= wordsPerEmission) {
-            emit(batch.toString())
-            delay(delayMillis)
-            batch.clear()
-            wordCount = 0
-        }
-    }
-
-    // Emit remaining
-    if (batch.isNotEmpty()) {
-        emit(batch.toString())
-    }
-}
+private val deltas = listOf(
+    "defined ", "by volatility, complexity", ", and accelerating\n",
+    "change. Markets evolve ", "faster than planning\n",
+    "Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book. It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged. ",
+    " cycles ", "customer", " expectations shift", " continuously."
+)
 
 @Preview
 @Composable
-private fun TrailFadeInSequentialChannelSequentialSharedFlowTextPreview() {
+private fun TrailFadeInPreview() {
     var text by remember {
         mutableStateOf("")
     }
@@ -161,14 +59,6 @@ private fun TrailFadeInSequentialChannelSequentialSharedFlowTextPreview() {
         mutableStateOf("")
     }
 
-    val deltas = remember {
-        listOf(
-            "defined ", "by volatility, complexity", ", and accelerating\n",
-            "change. Markets evolve ", "faster than planning\n",
-            "Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book. It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged. ",
-            " cycles ", "customer", " expectations shift", " continuously."
-        )
-    }
 
     LaunchedEffect(Unit) {
         delay(1000)
@@ -183,25 +73,27 @@ private fun TrailFadeInSequentialChannelSequentialSharedFlowTextPreview() {
     Column(
         modifier = Modifier.systemBarsPadding()
     ) {
+        Text("TrailFadeInText", fontSize = 18.sp)
+        Spacer(modifier = Modifier.height(16.dp))
         TrailFadeInText(
             text = chunkText,
             modifier = Modifier.fillMaxWidth().height(160.dp)
         )
+
+        Text("TrailFadeInTextParallelWithChannel", fontSize = 18.sp)
         Spacer(modifier = Modifier.height(16.dp))
-        TrailFadeInSequentialChannelText(
+        TrailFadeInTextParallelWithChannel(
             text = chunkText,
             modifier = Modifier.fillMaxWidth().height(160.dp)
         )
-        Spacer(modifier = Modifier.height(16.dp))
-        TrailFadeInSequentialSharedFlowText(
-            text = chunkText,
-            modifier = Modifier.fillMaxWidth().height(160.dp)
-        )
+
+        Text("TrailFadeInTextThatLags", fontSize = 18.sp)
         Spacer(modifier = Modifier.height(16.dp))
         TrailFadeInTextThatLags(
             text = chunkText,
             modifier = Modifier.fillMaxWidth().height(160.dp)
         )
+
         Spacer(modifier = Modifier.weight(1f))
 
         OutlinedTextField(
@@ -271,7 +163,9 @@ private fun TrailFadeInText(
                         endIndex = endIndex
                     ).map {
                         RectWithAnimation(
-                            rect = it
+                            rect = it,
+                            startIndex = startIndex,
+                            endIndex = end
                         )
                     }
 
@@ -316,51 +210,61 @@ private fun TrailFadeInText(
     )
 }
 
+
 @Composable
-private fun TrailFadeInSequentialChannelText(
+private fun TrailFadeInTextParallelWithChannel(
     modifier: Modifier = Modifier,
     text: String,
     start: Int = 0,
     end: Int = text.lastIndex,
-    style: TextStyle = TextStyle.Default
+    style: TextStyle = TextStyle.Default,
+    onComplete: () -> Unit = {}
 ) {
     var startIndex by remember { mutableIntStateOf(start) }
     var endIndex by remember { mutableIntStateOf(end) }
 
     val rectList = remember { mutableStateListOf<RectWithAnimation>() }
 
-    // A queue of "new rect batches" coming from onTextLayout
+    // Queue of rect batches coming from onTextLayout
     val rectBatchChannel = remember {
         Channel<List<RectWithAnimation>>(
             capacity = Channel.UNLIMITED
         )
     }
 
-    // One long-lived consumer: never restarted -> never cancels previous work due to new layouts
+    // Track jobs so each rect starts once, and you can optionally clean up.
+    val jobsByRectId = remember { mutableStateMapOf<String, Job>() }
+
+    // One long-lived "dispatcher" coroutine; does not restart on new layouts.
     LaunchedEffect(Unit) {
-
         for (batch in rectBatchChannel) {
+            batch.forEachIndexed { index, rwa ->
+                // If you might enqueue the same instance again, guard it.
+                val id = rwa.id
+                if (jobsByRectId.containsKey(id)) return@forEachIndexed
 
-            println("LaunchedEffect Batch size: ${batch.size}")
-            // If you want per-batch staggering:
-            batch.forEachIndexed { index, rwa: RectWithAnimation ->
-                // Sequential processing (stable, predictable)
-                try {
-                    rwa.animatable.animateTo(
-                        targetValue = 1f,
-                        animationSpec = tween(100, easing = LinearEasing)
-                    )
-                    // rectList.remove(rwa) // optional cleanup
-                } catch (e: CancellationException) {
-                    // Only cancelled if the composable leaves composition
-                    println(
-                        "CANCELED for " +
-                                "startIndex: $startIndex, " +
-                                "endIndex: $endIndex, " +
-                                "index: $index.\n" +
-                                "message: ${e.message}"
-                    )
+                val job = launch {
+                    // Optional stagger; keeps parallel but slightly cascaded.
+                    delay(20L * index)
+
+                    try {
+                        rwa.animatable.animateTo(
+                            targetValue = 1f,
+                            animationSpec = tween(1000, easing = LinearEasing)
+                        )
+                        delay(60)
+
+                        // Optional: remove after done, if you don’t want the overlay forever.
+                        // rectList.remove(rwa)
+
+                    } catch (_: CancellationException) {
+                        // Cancelled only if composable leaves composition
+                    } finally {
+                        jobsByRectId.remove(id)
+                    }
                 }
+
+                jobsByRectId[id] = job
             }
         }
     }
@@ -379,75 +283,22 @@ private fun TrailFadeInSequentialChannelText(
                 textLayoutResult = textLayout,
                 startIndex = startIndex,
                 endIndex = endIndex
-            ).map { RectWithAnimation(rect = it) }
-
-            startIndex = endIndex + 1
-
-            // Mutate UI state here (main thread) so rects appear immediately
-            rectList.addAll(newRects)
-
-            // Enqueue animation work (never restarts/cancels consumer)
-            rectBatchChannel.trySend(newRects)
-        },
-        text = text,
-        style = style
-    )
-}
-
-@Composable
-private fun TrailFadeInSequentialSharedFlowText(
-    modifier: Modifier = Modifier,
-    text: String,
-    start: Int = 0,
-    end: Int = text.lastIndex,
-    style: TextStyle = TextStyle.Default
-) {
-    var startIndex by remember { mutableIntStateOf(start) }
-    var endIndex by remember { mutableIntStateOf(end) }
-
-    val rectList = remember { mutableStateListOf<RectWithAnimation>() }
-
-    val rectSharedFlow = remember {
-        MutableSharedFlow<List<RectWithAnimation>>(
-            replay = 0,
-            extraBufferCapacity = 64,
-            onBufferOverflow = BufferOverflow.SUSPEND
-        )
-    }
-
-    LaunchedEffect(Unit) {
-        rectSharedFlow.collect { batch ->
-            batch.forEachIndexed { index, rwa ->
-                rwa.animatable.animateTo(
-                    targetValue = 1f,
-                    animationSpec = tween(100, easing = LinearEasing)
+            ).map { rect ->
+                RectWithAnimation(
+                    id = "${startIndex}_${endIndex}_${rect.top}_${rect.left}_${rect.right}_${rect.bottom}",
+                    rect = rect,
+                    startIndex = startIndex,
+                    endIndex = end
                 )
             }
-        }
-    }
-
-    Text(
-        modifier = modifier
-            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-            .drawWithContent {
-                drawContent()
-                drawFadeInRects(rectList)
-            },
-        onTextLayout = { layout ->
-            endIndex = text.lastIndex
-
-            val newRects = calculateBoundingRects(
-                textLayoutResult = layout,
-                startIndex = startIndex,
-                endIndex = endIndex
-            ).map {
-                RectWithAnimation(rect = it)
-            }
 
             startIndex = endIndex + 1
 
+            // Make them visible immediately
             rectList.addAll(newRects)
-            rectSharedFlow.tryEmit(newRects)
+
+            // Kick off animations without causing cancellation of previous ones
+            rectBatchChannel.trySend(newRects)
         },
         text = text,
         style = style
@@ -498,7 +349,9 @@ private fun TrailFadeInTextThatLags(
                     endIndex = endIndex
                 ).map {
                     RectWithAnimation(
-                        rect = it
+                        rect = it,
+                        startIndex = startIndex,
+                        endIndex = end
                     )
                 }
 
@@ -546,6 +399,7 @@ private fun TrailFadeInTextThatLags(
         style = style
     )
 }
+
 
 private fun ContentDrawScope.drawFadeInRects(rectList: List<RectWithAnimation>) {
     rectList.forEachIndexed { _, rectWithAnimation ->
@@ -607,6 +461,9 @@ private fun ContentDrawScope.drawFadeInRects(rectList: List<RectWithAnimation>) 
 }
 
 data class RectWithAnimation(
+    val id: String = "",
+    val startIndex: Int,
+    val endIndex: Int,
     val rect: Rect,
     val animatable: Animatable<Float, AnimationVector1D> = Animatable(0f),
 )

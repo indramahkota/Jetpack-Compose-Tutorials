@@ -84,7 +84,7 @@ fun TextBoundsRect2Preview() {
                 boundingRectList.clear()
 
                 boundingRectList.addAll(
-                    calculateBoundingRectList(
+                    calculateBoundingRecWithColortList(
                         textLayoutResult = textLayout,
                         startIndex = startIndex,
                         endIndex = endIndex
