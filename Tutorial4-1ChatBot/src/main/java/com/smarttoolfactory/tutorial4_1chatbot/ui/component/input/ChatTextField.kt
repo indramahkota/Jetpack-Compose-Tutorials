@@ -136,9 +136,7 @@ internal fun ChatTextField(
                     modifier = Modifier
                         .fillMaxWidth()
                         .focusRequester(focusRequester),
-                    textStyle = TextStyle(
-                        fontSize = 18.sp
-                    ),
+                    textStyle = TextStyle(fontSize = 18.sp),
                     enabled = enabled,
                     value = value,
                     onValueChange = onValueChange,

@@ -7,7 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedTextField
@@ -19,16 +19,16 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -37,7 +37,6 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.launch
 import kotlin.coroutines.cancellation.CancellationException
 
 private val deltas = listOf(
@@ -49,7 +48,7 @@ private val deltas = listOf(
 
 @Preview
 @Composable
-private fun TrailFadeInPreview() {
+private fun TrailFadeInSequentialPreview() {
     var text by remember {
         mutableStateOf("")
     }
@@ -58,11 +57,15 @@ private fun TrailFadeInPreview() {
         mutableStateOf("")
     }
 
+    var startAnimation by remember {
+        mutableStateOf(true)
+    }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(startAnimation) {
         delay(1000)
         deltas.toWordFlow(
-            delayMillis = 60
+            delayMillis = 60,
+            wordsPerEmission = 5
         ).collect {
             chunkText += it
         }
@@ -107,15 +110,30 @@ private fun TrailFadeInPreview() {
 
         OutlinedTextField(
             modifier = Modifier
-                .imePadding()
+                .padding(horizontal = 16.dp)
                 .fillMaxWidth(),
             value = text,
             onValueChange = {
                 text = it
             }
         )
+
         Button(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .padding(horizontal = 16.dp)
+                .fillMaxWidth(),
+            onClick = {
+                startAnimation = startAnimation.not()
+                chunkText = ""
+            }
+        ) {
+            Text("Reset")
+        }
+
+        Button(
+            modifier = Modifier
+                .padding(horizontal = 16.dp)
+                .fillMaxWidth(),
             onClick = {
                 chunkText += text
             }
@@ -156,9 +174,10 @@ private fun TrailFadeInSequentialChannelText(
             batch.forEachIndexed { index, rectWithAnimation: RectWithAnimation ->
                 // Sequential processing (stable, predictable)
                 try {
+                    val duration = (rectWithAnimation.rect.width * 1.2f).toInt()
                     rectWithAnimation.animatable.animateTo(
                         targetValue = 1f,
-                        animationSpec = tween(100, easing = LinearEasing)
+                        animationSpec = tween(duration, easing = LinearEasing)
                     )
                     // rectList.remove(rwa) // optional cleanup
                 } catch (e: CancellationException) {
@@ -239,9 +258,11 @@ private fun TrailFadeInSequentialSharedFlowText(
     LaunchedEffect(Unit) {
         rectSharedFlow.collect { batch ->
             batch.forEachIndexed { _, rectWithAnimation ->
+
+                val duration = (rectWithAnimation.rect.width * 1.2f).toInt()
                 rectWithAnimation.animatable.animateTo(
                     targetValue = 1f,
-                    animationSpec = tween(100, easing = LinearEasing)
+                    animationSpec = tween(duration, easing = LinearEasing)
                 )
 
                 if (rectWithAnimation.endIndex == text.lastIndex) {
@@ -302,35 +323,42 @@ private fun ContentDrawScope.drawFadeInRects(rectList: List<RectWithAnimation>) 
             draw only one with changing alpha or dimensions with color or brush
          */
 
-//        val brush = Brush.linearGradient(
-//            colors = listOf(
-//                Color.Red.copy((-0.25f + 1f - progress).coerceIn(0f, 1f)),
-//                Color.Red.copy(1f - progress),
-//            ),
-//            start = rect.topLeft,
-//            end = rect.bottomRight,
-//        )
-//
-//        drawRect(
-//            brush = brush,
-//            topLeft = topLeft,
-//            size = rectSize,
-//            blendMode = BlendMode.DstOut
-//        )
+        // When alpha is 1 rect is visible so nothing is shown
+        // If alpha of left top goes to 0 faster it will be revealed earlier than
+        // bottom right of the rectangle
+        // This is visible when rectangles are bigger than single word
+        val alphaLeft = if (progress == 0f) 1f else (1 - progress * 4f).coerceIn(0f, 1f)
+        val alphaRight = if (progress == 0f) 1f else (1 - progress).coerceIn(0f, 1f)
+
+        val brush = Brush.linearGradient(
+            colors = listOf(
+                Color.Red.copy(alphaLeft),
+                Color.Red.copy(alphaRight),
+            ),
+            start = rect.topLeft,
+            end = rect.bottomRight
+        )
+
+        drawRect(
+            brush = brush,
+            topLeft = topLeft,
+            size = rectSize,
+            blendMode = BlendMode.DstOut
+        )
 
 //        drawRect(
 //            color = Color.Red.copy(1 - progress),
 //            topLeft = Offset(posX, topLeft.y),
 //            size = Size(animatedWidth, rectHeight),
-//            blendMode = BlendMode.DstOut
+////            blendMode = BlendMode.DstOut
 //        )
 
-        drawRect(
-            color = Color.Red.copy(1 - progress),
-            topLeft = topLeft,
-            size = rectSize,
-//            blendMode = BlendMode.DstOut
-        )
+//        drawRect(
+//            color = Color.Red.copy(1 - progress),
+//            topLeft = topLeft,
+//            size = rectSize,
+////            blendMode = BlendMode.DstOut
+//        )
 
         // For Debugging
 //        drawRect(

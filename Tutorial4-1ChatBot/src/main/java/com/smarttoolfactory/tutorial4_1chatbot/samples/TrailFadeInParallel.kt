@@ -1,5 +1,6 @@
 package com.smarttoolfactory.tutorial4_1chatbot.samples
 
+import android.util.Log.e
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.LinearEasing
@@ -8,8 +9,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -26,6 +29,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
@@ -50,7 +54,7 @@ private val deltas = listOf(
 
 @Preview
 @Composable
-private fun TrailFadeInPreview() {
+private fun TrailFadeInParallelPreview() {
     var text by remember {
         mutableStateOf("")
     }
@@ -59,11 +63,15 @@ private fun TrailFadeInPreview() {
         mutableStateOf("")
     }
 
+    var startAnimation by remember {
+        mutableStateOf(true)
+    }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(startAnimation) {
         delay(1000)
         deltas.toWordFlow(
-            delayMillis = 60
+            delayMillis = 60,
+            wordsPerEmission = 3
         ).collect {
 //            println("Collect: $it")
             chunkText += it
@@ -71,7 +79,7 @@ private fun TrailFadeInPreview() {
     }
 
     Column(
-        modifier = Modifier.systemBarsPadding()
+        modifier = Modifier.systemBarsPadding().verticalScroll(rememberScrollState())
     ) {
         Text("TrailFadeInText", fontSize = 18.sp)
         Spacer(modifier = Modifier.height(16.dp))
@@ -96,9 +104,21 @@ private fun TrailFadeInPreview() {
 
         Spacer(modifier = Modifier.weight(1f))
 
+        Button(
+            modifier = Modifier
+                .padding(horizontal = 16.dp)
+                .fillMaxWidth(),
+            onClick = {
+                startAnimation = startAnimation.not()
+                chunkText = ""
+            }
+        ) {
+            Text("Reset")
+        }
+
         OutlinedTextField(
             modifier = Modifier
-                .imePadding()
+                .padding(16.dp)
                 .fillMaxWidth(),
             value = text,
             onValueChange = {
@@ -106,7 +126,7 @@ private fun TrailFadeInPreview() {
             }
         )
         Button(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.padding(16.dp).fillMaxWidth(),
             onClick = {
                 chunkText += text
             }
@@ -217,8 +237,7 @@ private fun TrailFadeInTextParallelWithChannel(
     text: String,
     start: Int = 0,
     end: Int = text.lastIndex,
-    style: TextStyle = TextStyle.Default,
-    onComplete: () -> Unit = {}
+    style: TextStyle = TextStyle.Default
 ) {
     var startIndex by remember { mutableIntStateOf(start) }
     var endIndex by remember { mutableIntStateOf(end) }
@@ -232,33 +251,38 @@ private fun TrailFadeInTextParallelWithChannel(
         )
     }
 
-    // Track jobs so each rect starts once, and you can optionally clean up.
+    // Track jobs so each rect starts once, and can optionally clean up.
     val jobsByRectId = remember { mutableStateMapOf<String, Job>() }
 
     // One long-lived "dispatcher" coroutine; does not restart on new layouts.
     LaunchedEffect(Unit) {
         for (batch in rectBatchChannel) {
-            batch.forEachIndexed { index, rwa ->
+            batch.forEachIndexed { index, rectWithAnimation ->
                 // If you might enqueue the same instance again, guard it.
-                val id = rwa.id
+                val id = rectWithAnimation.id
                 if (jobsByRectId.containsKey(id)) return@forEachIndexed
 
                 val job = launch {
-                    // Optional stagger; keeps parallel but slightly cascaded.
+                    // Optional stagger, keeps parallel but slightly cascaded.
                     delay(20L * index)
 
                     try {
-                        rwa.animatable.animateTo(
+                        rectWithAnimation.animatable.animateTo(
                             targetValue = 1f,
                             animationSpec = tween(1000, easing = LinearEasing)
                         )
                         delay(60)
 
-                        // Optional: remove after done, if you don’t want the overlay forever.
-                        // rectList.remove(rwa)
+                         rectList.remove(rectWithAnimation)
 
-                    } catch (_: CancellationException) {
-                        // Cancelled only if composable leaves composition
+                    } catch (e: CancellationException) {
+                        println(
+                            "CANCELED for " +
+                                    "startIndex: $startIndex, " +
+                                    "endIndex: $endIndex, " +
+                                    "index: $index.\n" +
+                                    "message: ${e.message}"
+                        )
                     } finally {
                         jobsByRectId.remove(id)
                     }
@@ -367,7 +391,7 @@ private fun TrailFadeInTextThatLags(
                             animationSpec = tween(1000, easing = LinearEasing)
                         )
                         delay(60)
-//                        rectList.remove(rectWithAnimation)
+                        rectList.remove(rectWithAnimation)
                     } catch (e: CancellationException) {
                         println(
                             "CANCELED for " +
@@ -447,7 +471,7 @@ private fun ContentDrawScope.drawFadeInRects(rectList: List<RectWithAnimation>) 
             color = Color.Red.copy(1 - progress),
             topLeft = topLeft,
             size = rectSize,
-//            blendMode = BlendMode.DstOut
+            blendMode = BlendMode.DstOut
         )
 
         // For Debugging
