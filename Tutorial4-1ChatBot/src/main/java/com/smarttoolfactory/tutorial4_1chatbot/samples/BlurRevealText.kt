@@ -29,11 +29,9 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.util.lerp
 import com.smarttoolfactory.tutorial4_1chatbot.ui.component.indicator.scale
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-
 
 @Preview
 @Composable
@@ -44,7 +42,7 @@ fun BlurRevealTextPreview() {
             .fillMaxSize()
             .padding(32.dp)
     ) {
-        
+
         val context = LocalContext.current
 
         val text =
@@ -92,11 +90,11 @@ fun BlurRevealText(
                         easing = LinearEasing
                     )
                 )
-                
+
                 if (rectWithAnimation.endIndex == text.lastIndex){
                     onComplete()
                 }
-                
+
             }
 
             delay((duration * .9f).toLong())
@@ -165,12 +163,3 @@ fun BlurRevealText(
         }
     }
 }
-
-// Scale x1 from a1..b1 range to a2..b2 range
-internal fun scale(a1: Float, b1: Float, x1: Float, a2: Float, b2: Float) =
-    lerp(a2, b2, calcFraction(a1, b1, x1))
-
-
-// Calculate the 0..1 fraction that `pos` value represents between `a` and `b`
-private fun calcFraction(a: Float, b: Float, pos: Float) =
-    (if (b - a == 0f) 0f else (pos - a) / (b - a)).coerceIn(0f, 1f)

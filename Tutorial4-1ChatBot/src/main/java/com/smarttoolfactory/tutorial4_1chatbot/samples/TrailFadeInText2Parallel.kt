@@ -1,6 +1,5 @@
 package com.smarttoolfactory.tutorial4_1chatbot.samples
 
-import android.util.Log.e
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.LinearEasing
