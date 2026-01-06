@@ -130,7 +130,7 @@ private fun TrailFadeInText(
 
                 println("Text: $text, startIndex: $startIndex, endIndex: $endIndex")
 
-                val newList: List<RectWithColor> = calculateBoundingRecWithColortList(
+                val newList: List<RectWithColor> = calculateBoundingRecWithColorList(
                     textLayoutResult = textLayout,
                     startIndex = startIndex,
                     endIndex = endIndex

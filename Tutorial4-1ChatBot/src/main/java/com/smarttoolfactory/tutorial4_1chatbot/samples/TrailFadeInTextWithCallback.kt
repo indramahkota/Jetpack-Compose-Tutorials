@@ -44,6 +44,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.collections.forEachIndexed
 
 private val deltas = listOf(
     "defined ", "by volatility, complexity", ", and accelerating\n",
@@ -233,122 +234,6 @@ private fun TrailFadeInTextWithCallback(
         style = style
     )
 }
-
-internal data class RectSpan(
-    val rect: Rect,
-    val charStart: Int,
-    val charEnd: Int,
-    val line: Int
-)
-
-internal fun calculateBoundingRectSpans(
-    textLayoutResult: TextLayoutResult,
-    startIndex: Int,
-    endIndex: Int
-): List<RectSpan> {
-    val text = textLayoutResult.layoutInput.text
-    if (text.isEmpty()) return emptyList()
-    if (startIndex > endIndex) return emptyList()
-
-    val lastIndex = text.length - 1
-    val safeStart = startIndex.coerceIn(0, lastIndex)
-    val safeEnd = endIndex.coerceIn(0, lastIndex)
-
-    val startLine = textLayoutResult.getLineForOffset(safeStart)
-    val endLine = textLayoutResult.getLineForOffset(safeEnd)
-
-    fun lastVisibleOffsetOnLine(line: Int): Int {
-        val visibleEndExclusive = textLayoutResult.getLineEnd(line, visibleEnd = true)
-        val lineStart = textLayoutResult.getLineStart(line)
-        return (visibleEndExclusive - 1).coerceAtLeast(lineStart)
-    }
-
-    fun safeBoxOrCursor(offset: Int): Rect {
-        val b = textLayoutResult.getBoundingBox(offset)
-        return if (b.width <= 0f) textLayoutResult.getCursorRect(offset) else b
-    }
-
-    val spans = mutableListOf<RectSpan>()
-
-    for (line in startLine..endLine) {
-        val lineStartIndex = textLayoutResult.getLineStart(line)
-        val lineLastVisible = lastVisibleOffsetOnLine(line)
-
-        val spanStart = when {
-            line == startLine -> safeStart
-            else -> lineStartIndex
-        }
-
-        val spanEnd = when {
-            line == endLine -> minOf(safeEnd, lineLastVisible)
-            else -> lineLastVisible
-        }
-
-        if (spanStart > spanEnd) continue
-
-        val lineTop = textLayoutResult.getLineTop(line)
-        val lineBottom = textLayoutResult.getLineBottom(line)
-        val lineLeft = textLayoutResult.getLineLeft(line)
-
-        val rect = when {
-            // single line
-            startLine == endLine -> {
-                val startRect = safeBoxOrCursor(spanStart)
-                val endRect = safeBoxOrCursor(spanEnd)
-                val unionRect = startRect.union(endRect)
-                Rect(
-                    topLeft = Offset(unionRect.left, lineTop),
-                    bottomRight = Offset(unionRect.right, lineBottom)
-                )
-            }
-
-            // first line
-            line == startLine -> {
-                val startRect = safeBoxOrCursor(spanStart)
-                val endRect = safeBoxOrCursor(spanEnd)
-                Rect(
-                    topLeft = Offset(startRect.left, lineTop),
-                    bottomRight = Offset(endRect.right, lineBottom)
-                )
-            }
-
-            // last line
-            line == endLine -> {
-                val endRect = safeBoxOrCursor(spanEnd)
-                Rect(
-                    topLeft = Offset(lineLeft, lineTop),
-                    bottomRight = Offset(endRect.right, lineBottom)
-                )
-            }
-
-            // middle lines
-            else -> {
-                val endRect = safeBoxOrCursor(spanEnd)
-                Rect(
-                    topLeft = Offset(lineLeft, lineTop),
-                    bottomRight = Offset(endRect.right, lineBottom)
-                )
-            }
-        }
-
-        if (rect.width > 0f && rect.height > 0f) {
-            spans += RectSpan(rect = rect, charStart = spanStart, charEnd = spanEnd, line = line)
-        }
-    }
-
-    return spans
-}
-
-
-private data class RectWithAnimatable(
-    val id: String,
-    val rect: Rect,
-    val charStart: Int,
-    val charEnd: Int,
-    val animatable: Animatable<Float, AnimationVector1D> = Animatable(0f)
-)
-
-private fun RectWithAnimatable.covers(index: Int): Boolean = index in charStart..charEnd
 
 
 private fun ContentDrawScope.drawFadeInRects(rectList: List<RectWithAnimatable>) {

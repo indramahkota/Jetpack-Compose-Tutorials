@@ -1,5 +1,7 @@
 package com.smarttoolfactory.tutorial4_1chatbot.samples
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
@@ -7,6 +9,100 @@ import androidx.compose.ui.text.TextLayoutResult
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.random.Random
+
+internal data class RectSpan(
+    val rect: Rect,
+    val charStart: Int,
+    val charEnd: Int,
+    val line: Int
+)
+
+internal fun calculateBoundingRectSpans(
+    textLayoutResult: TextLayoutResult,
+    startIndex: Int,
+    endIndex: Int
+): List<RectSpan> {
+    val text = textLayoutResult.layoutInput.text
+    if (text.isEmpty()) return emptyList()
+    if (startIndex > endIndex) return emptyList()
+
+    val lastIndex = text.length - 1
+    val safeStart = startIndex.coerceIn(0, lastIndex)
+    val safeEnd = endIndex.coerceIn(0, lastIndex)
+
+    val startLine = textLayoutResult.getLineForOffset(safeStart)
+    val endLine = textLayoutResult.getLineForOffset(safeEnd)
+
+    val spans = mutableListOf<RectSpan>()
+
+    for (line in startLine..endLine) {
+        val lineStartIndex = textLayoutResult.getLineStart(line)
+        val lineLastVisible = lastVisibleOffsetOnLine(layout = textLayoutResult, line = line)
+
+        val spanStart = when {
+            line == startLine -> safeStart
+            else -> lineStartIndex
+        }
+
+        val spanEnd = when {
+            line == endLine -> minOf(safeEnd, lineLastVisible)
+            else -> lineLastVisible
+        }
+
+        if (spanStart > spanEnd) continue
+
+        val lineTop = textLayoutResult.getLineTop(line)
+        val lineBottom = textLayoutResult.getLineBottom(line)
+        val lineLeft = textLayoutResult.getLineLeft(line)
+
+        val rect = when {
+            // single line
+            startLine == endLine -> {
+                val startRect = safeBoxOrCursor(layout = textLayoutResult, offset = spanStart)
+                val endRect = safeBoxOrCursor(layout = textLayoutResult, offset = spanEnd)
+                val unionRect = startRect.union(endRect)
+                Rect(
+                    topLeft = Offset(unionRect.left, lineTop),
+                    bottomRight = Offset(unionRect.right, lineBottom)
+                )
+            }
+
+            // first line
+            line == startLine -> {
+                val startRect = safeBoxOrCursor(layout = textLayoutResult, offset = spanStart)
+                val endRect = safeBoxOrCursor(layout = textLayoutResult, offset = spanEnd)
+                Rect(
+                    topLeft = Offset(startRect.left, lineTop),
+                    bottomRight = Offset(endRect.right, lineBottom)
+                )
+            }
+
+            // last line
+            line == endLine -> {
+                val endRect = safeBoxOrCursor(layout = textLayoutResult, offset = spanEnd)
+                Rect(
+                    topLeft = Offset(lineLeft, lineTop),
+                    bottomRight = Offset(endRect.right, lineBottom)
+                )
+            }
+
+            // middle lines
+            else -> {
+                val endRect = safeBoxOrCursor(layout = textLayoutResult, offset = spanEnd)
+                Rect(
+                    topLeft = Offset(lineLeft, lineTop),
+                    bottomRight = Offset(endRect.right, lineBottom)
+                )
+            }
+        }
+
+        if (rect.width > 0f && rect.height > 0f) {
+            spans += RectSpan(rect = rect, charStart = spanStart, charEnd = spanEnd, line = line)
+        }
+    }
+
+    return spans
+}
 
 internal fun calculateBoundingRectList(
     textLayoutResult: TextLayoutResult,
@@ -94,7 +190,10 @@ private fun getBoundingRectForLine(
         currentLine == startLine -> {
             // Multi-line: first line from startIndex to visual end of start line
             val startRect: Rect = safeBoxOrCursor(textLayoutResult, startIndex)
-            val endRect: Rect = safeBoxOrCursor(textLayoutResult, lastVisibleOffsetOnLine(textLayoutResult, currentLine))
+            val endRect: Rect = safeBoxOrCursor(
+                textLayoutResult,
+                lastVisibleOffsetOnLine(textLayoutResult, currentLine)
+            )
 
             Rect(
                 topLeft = Offset(startRect.left, lineTop),
@@ -114,7 +213,10 @@ private fun getBoundingRectForLine(
 
         else -> {
             // Middle lines: full visible line rect (left -> right of last visible glyph)
-            val endRect = safeBoxOrCursor(textLayoutResult, lastVisibleOffsetOnLine(textLayoutResult, currentLine))
+            val endRect = safeBoxOrCursor(
+                textLayoutResult,
+                lastVisibleOffsetOnLine(textLayoutResult, currentLine)
+            )
 
             Rect(
                 topLeft = Offset(lineLeft, lineTop),
@@ -290,7 +392,7 @@ fun computeDiffRange(old: String, new: String): DiffRange? {
     return DiffRange(start, endExclusive)
 }
 
-internal fun calculateBoundingRecWithColortList(
+internal fun calculateBoundingRecWithColorList(
     textLayoutResult: TextLayoutResult,
     startIndex: Int,
     endIndex: Int
@@ -405,6 +507,24 @@ internal fun Rect.union(other: Rect): Rect {
         bottom = max(this.bottom, other.bottom)
     )
 }
+
+data class RectWithAnimation(
+    val id: String = "",
+    val startIndex: Int,
+    val endIndex: Int,
+    val rect: Rect,
+    val animatable: Animatable<Float, AnimationVector1D> = Animatable(0f),
+)
+
+internal data class RectWithAnimatable(
+    val id: String,
+    val rect: Rect,
+    val charStart: Int,
+    val charEnd: Int,
+    val animatable: Animatable<Float, AnimationVector1D> = Animatable(0f)
+)
+
+internal fun RectWithAnimatable.covers(index: Int): Boolean = index in charStart..charEnd
 
 data class RectWithColor(
     val rect: Rect,

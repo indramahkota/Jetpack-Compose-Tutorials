@@ -42,6 +42,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.collections.forEachIndexed
 import kotlin.coroutines.cancellation.CancellationException
 
 private val deltas = listOf(
@@ -482,11 +483,3 @@ private fun ContentDrawScope.drawFadeInRects(rectList: List<RectWithAnimation>) 
 //        )
     }
 }
-
-data class RectWithAnimation(
-    val id: String = "",
-    val startIndex: Int,
-    val endIndex: Int,
-    val rect: Rect,
-    val animatable: Animatable<Float, AnimationVector1D> = Animatable(0f),
-)
