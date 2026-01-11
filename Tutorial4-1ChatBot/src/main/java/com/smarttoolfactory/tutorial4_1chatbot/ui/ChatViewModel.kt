@@ -199,11 +199,8 @@ class ChatViewModel @Inject constructor(
                 // 🔥Functions to split deltas to chunks after delay
                 .deltasToMarkdownTokensWithDelay(
                     flushRemainderOnComplete = true,
-                    delayMillis = 16
+                    delayMillis = 30
                 )
-//                .deltasToWordsWithDelay(
-//                    delayMillis = 30
-//                )
                 .onEach { chunk ->
                     updateMessageById(initialMessage.uiKey) { message ->
                         message.copy(

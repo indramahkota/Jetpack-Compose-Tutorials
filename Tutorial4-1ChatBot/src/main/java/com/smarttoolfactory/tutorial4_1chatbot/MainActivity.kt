@@ -5,6 +5,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.sp
+import com.halilibo.richtext.ui.RichTextThemeProvider
 import com.smarttoolfactory.tutorial4_1chatbot.ui.ChatScreen
 import com.smarttoolfactory.tutorial4_1chatbot.ui.ChatViewModel
 import dagger.hilt.android.AndroidEntryPoint
@@ -17,18 +20,18 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val context = this
         enableEdgeToEdge()
         setContent {
-
-            ChatScreen(viewModel)
-
-//            val okHttpClient = OkHttpClient.Builder()
-//                .addInterceptor(ChuckerInterceptor(context))
-//                .build()
-//
-//
-//            ChatScreen(ChatViewModel(okHttpClient))
+            RichTextThemeProvider(
+                textStyleProvider = {
+                    TextStyle.Default.copy(
+                        fontSize = 18.sp,
+                        lineHeight = 22.sp
+                    )
+                }
+            ) {
+                ChatScreen(viewModel)
+            }
 
         }
     }

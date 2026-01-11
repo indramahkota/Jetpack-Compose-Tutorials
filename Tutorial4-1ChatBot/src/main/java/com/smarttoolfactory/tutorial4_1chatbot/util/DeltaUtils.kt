@@ -3,123 +3,134 @@ package com.smarttoolfactory.tutorial4_1chatbot.util
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import com.halilibo.richtext.commonmark.Markdown
+import com.halilibo.richtext.ui.BasicRichText
+import com.halilibo.richtext.ui.RichTextStyle
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.scan
+import kotlinx.coroutines.flow.collectLatest
+
 
 /**
- * Convert arbitrary token deltas into discrete word emissions.
+ * Preview that demonstrates streaming-safe markdown chunking.
  *
- * - Emits each word followed by a single trailing space (configurable).
- * - Correctly handles words split across deltas (e.g., "Hel" + "lo").
- * - Treats whitespace (space/tab/newline) as separators.
  */
-fun Flow<String>.deltasToWordsWithDelay(
-    delayMillis: Long = 60L,
-    emitTrailingSpace: Boolean = true,
-    flushRemainderOnComplete: Boolean = true
-): Flow<String> = flow {
-    val sb = StringBuilder()
+@Preview(showBackground = true, widthDp = 420)
+@Composable
+fun MarkdownTokenStreamPreview() {
 
-    fun StringBuilder.consumeNextWordOrNull(): String? {
-        // Skip leading whitespace
-        while (isNotEmpty() && this[0].isWhitespace()) deleteCharAt(0)
-        if (isEmpty()) return null
+    // Longer, more varied simulated SSE deltas.
+    // These intentionally split paired markdown delimiters so your tokenizer must WAIT until closed.
+    val deltas = remember {
+        flowOf(
+            "# Ti", "tle: Strea", "ming Mark", "down\n\n",
 
-        // Find end of word
-        var i = 0
-        while (i < length && !this[i].isWhitespace()) i++
+            "## Sec", "tion A — Emph", "asis\n\n",
 
-        // If no whitespace found, word may be incomplete (wait for more)
-        if (i == length) return null
+            "This para", "graph contains ",
+            "**bo", "ld**", ", ",
+            "__bo", "ld-alt__", ", ",
+            "~~str", "ike~~", ", and ",
+            "`inli", "neCode()", "`.\n\n",
 
-        val word = substring(0, i)
-        delete(0, i)
-        return word
+            "It also contains mixed emphasis like ",
+            "**bold with _ita", "lic inside_**",
+            " and ",
+            "__bold with *ita", "lic inside*__",
+            ".\n\n",
+
+            "### Incom", "plete spans should never show mid-stre", "am\n",
+            "You should not see ",
+            "**par", "t, ",
+            "__par", "t, ",
+            "~~par", ", or ",
+            "`par",
+            " in the rendered output until they close.\n\n",
+
+            "---\n\n",
+
+            "## Sec", "tion B — Li", "sts\n\n",
+
+            "- First bullet with ", "**bo", "ld**", "\n",
+            "- Second bullet with ", "_ita", "lic_", "\n",
+            "- Third bullet with ", "~~str", "ike~~", " and ", "`co", "de`", "\n",
+            "  - Nested bullet with ", "**bold _and ita", "lic_**", "\n",
+            "  - Nested bullet with ", "__double underscore bo", "ld__", "\n\n",
+
+            "1. First ordered i", "tem\n",
+            "2. Second ordered item with ", "**bo", "ld**", "\n",
+            "3. Third ordered item with ", "_ita", "lic_", " and ", "`co", "de`", "\n\n",
+
+            "> Blockquote line one with ", "**bo", "ld**", "\n",
+            "> Blockquote line two with ", "_ita", "lic_", "\n\n",
+
+            "---\n\n",
+
+            "## Sec", "tion C — Ta", "ble\n\n",
+
+            "| Feature | Example | Notes |\n",
+            "|--------:|:--------|:------|\n",
+
+            "| Bold    | ", "**Hel", "lo**", " | waits until closed |\n",
+            "| Italic  | ", "_Wor", "ld_", " | safe streaming |\n",
+            "| Strike  | ", "~~Do", "ne~~", " | safe streaming |\n",
+            "| Code    | ", "`val x ", "= 1`", " | waits until closing backtick |\n",
+            "| Mixed   | ", "**A _B", "_ C**", " | nested emphasis |\n\n",
+
+            "---\n\n",
+
+            "## Sec", "tion D — More headers & te", "xt\n\n",
+
+            "#### Subheading Level ", "4\n",
+            "Some trailing text with ",
+            "**fi", "nal bo", "ld**",
+            " and ",
+            "_fi", "nal ita", "lic_",
+            ".\n\n",
+
+            "###### Subheading Level ", "6\n",
+            "End.\n"
+        )
     }
 
-    collect { delta ->
-        if (delta.isEmpty()) return@collect
-        sb.append(delta)
+    // Build the visible text incrementally by appending emitted chunks.
+    var rendered by remember { mutableStateOf("") }
 
-        while (true) {
-            val word = sb.consumeNextWordOrNull() ?: break
-            emit(if (emitTrailingSpace) "$word " else word)
-            delay(delayMillis)
-        }
+    LaunchedEffect(Unit) {
+        // Reset each time preview recomposes (so it replays deterministically)
+        rendered = ""
+
+        deltas
+            .deltasToMarkdownTokensWithDelay(
+                delayMillis = 60L,
+                flushRemainderOnComplete = true,
+                maxCompletedWordsPerFlush = 12,
+                maxCompletedMarkdownSpansPerFlush = 4
+            )
+            .scan("") { acc, token -> acc + token }
+            .collectLatest { rendered = it }
     }
 
-    if (flushRemainderOnComplete) {
-        // Emit any leftover (final word without trailing whitespace)
-        val tail = sb.toString().trim()
-        if (tail.isNotEmpty()) {
-            emit(if (emitTrailingSpace) "$tail " else tail)
-            delay(delayMillis)
+    Column(Modifier
+        .verticalScroll(rememberScrollState())
+        .padding(16.dp)) {
+        BasicRichText(
+            modifier = Modifier.padding(vertical = 16.dp),
+            style = RichTextStyle.Default
+        ) {
+            Markdown(rendered)
         }
     }
 }
 
-fun Flow<String>.chunkDeltasWithDelay(
-    wordMax: Int = 10,
-    delayMillis: Long = 300L
-): Flow<String> = flow {
-    val buffer = mutableListOf<String>()
-
-    collect { delta ->
-        val words = delta
-            .split(" ", "\n", "\t")
-            .filter { it.isNotBlank() }
-
-        for (word in words) {
-            buffer.add(word)
-            if (buffer.size == wordMax) {
-                emit(buffer.joinToString(" ") + " ")
-                delay(delayMillis)
-                buffer.clear()
-            }
-        }
-    }
-
-    // Flush remaining words on completion
-    if (buffer.isNotEmpty()) {
-        emit(buffer.joinToString(" "))
-        delay(delayMillis)
-    }
-}
-
-fun Flow<String>.deltasToLinesWithDelay(
-    emitTrailingNewline: Boolean = false,
-    flushRemainderOnComplete: Boolean = true,
-    delayMillis: Long = 16L
-): Flow<String> = flow {
-    val sb = StringBuilder()
-
-    collect { delta ->
-        if (delta.isEmpty()) return@collect
-
-        // Normalize CRLF / CR to LF
-        sb.append(delta.replace("\r\n", "\n").replace("\r", "\n"))
-
-        while (true) {
-            val newlineIndex = sb.indexOf('\n')
-            if (newlineIndex < 0) break
-
-            val line = sb.substring(0, newlineIndex)
-            emit(if (emitTrailingNewline) "$line\n" else line)
-            delay(delayMillis)
-
-            // Remove emitted line + newline
-            sb.delete(0, newlineIndex + 1)
-        }
-    }
-
-    if (flushRemainderOnComplete && sb.isNotEmpty()) {
-        emit(sb.toString())
-        delay(delayMillis)
-    }
-}
-
-private fun StringBuilder.indexOf(ch: Char): Int {
-    for (i in 0 until length) if (this[i] == ch) return i
-    return -1
-}
 
 /**
  * Stream text as "tokens" suitable for Markdown:
@@ -243,40 +254,25 @@ fun Flow<String>.deltasToMarkdownTokensWithDelay(
 
 
 /**
- * Markdown-aware chunker:
- * - Parses deltas into markdown "tokens" (special markers + text runs)
- * - Batches tokens into chunks to reduce UI recompositions
- * - Flushes immediately on hard boundaries (newline/code fence/table/heading/list markers)
- * - Delays once per emitted chunk
+ * Stream text in Markdown-safe chunks:
+ * - NEVER emits an opening paired markdown delimiter unless its closing delimiter is present:
+ *   **...**, __...__, ~~...~~, `...`, ```...```
+ * - Newlines are emitted as their own chunk.
+ * - Plain text is emitted as word-ish units (word + optional trailing single space).
+ *
+ * This prevents broken intermediate Markdown such as "**hello" from being displayed.
  */
-fun Flow<String>.deltasToMarkdownChunksWithDelay(
-    delayMillis: Long = 60L,
-    maxTokensPerChunk: Int = 12,
-    maxCharsPerChunk: Int = 80,
-    flushRemainderOnComplete: Boolean = true
+fun Flow<String>.deltasToMarkdownTokensWithDelay(
+    delayMillis: Long = 16L,
+    flushRemainderOnComplete: Boolean = true,
+    maxCompletedWordsPerFlush: Int = Int.MAX_VALUE,
+    maxCompletedMarkdownSpansPerFlush: Int = Int.MAX_VALUE,
+    normalizeSpaces: Boolean = true
 ): Flow<String> = flow {
     val sb = StringBuilder()
 
-    // Prefer longer tokens first
-    val specials = listOf(
-        "```", "**", "__", "~~",
-        "######", "#####", "####", "###", "##", "#",
-        "\n",
-        "`",
-        "|",
-        ">",
-        "-",
-        "*",
-        "+",
-        "[", "]", "(", ")", "!"
-    )
-
-    // Tokens that should force an immediate flush (keep Markdown stable)
-    val hardBoundaries = setOf(
-        "\n", "```", "|",
-        "#", "##", "###", "####", "#####", "######",
-        ">", "-", "*", "+"
-    )
+    // Paired delimiters that must be complete before emitting.
+    val pairedDelims = listOf("```", "**", "__", "~~", "`")
 
     fun StringBuilder.startsWithToken(token: String): Boolean {
         if (length < token.length) return false
@@ -284,115 +280,250 @@ fun Flow<String>.deltasToMarkdownChunksWithDelay(
         return true
     }
 
-    fun StringBuilder.consumeSpecialOrNull(): String? {
-        for (t in specials) {
-            if (startsWithToken(t)) {
-                delete(0, t.length)
-                return t
-            }
-        }
-        return null
-    }
-
-    fun StringBuilder.consumeTextRunOrNull(): String? {
-        if (isEmpty()) return null
-        if (specials.any { startsWithToken(it) }) return null
-
-        var i = 0
-        while (i < length) {
-            val hitBoundary = specials.any { token ->
-                if (i + token.length > length) false
-                else {
-                    var ok = true
-                    for (k in token.indices) {
-                        if (this[i + k] != token[k]) {
-                            ok = false; break
-                        }
-                    }
-                    ok
+    fun StringBuilder.indexOfToken(token: String, start: Int): Int {
+        val max = length - token.length
+        var i = start
+        while (i <= max) {
+            var ok = true
+            for (k in token.indices) {
+                if (this[i + k] != token[k]) {
+                    ok = false
+                    break
                 }
             }
-            if (hitBoundary) break
+            if (ok) return i
+            i++
+        }
+        return -1
+    }
+
+    fun countWordsIn(text: String): Int {
+        // Count "words" as runs of non-whitespace.
+        // This is used for budget limiting; it does not affect output content.
+        var inWord = false
+        var count = 0
+        for (ch in text) {
+            val isWs = ch.isWhitespace()
+            if (!isWs && !inWord) {
+                inWord = true
+                count++
+            } else if (isWs) {
+                inWord = false
+            }
+        }
+        return count
+    }
+
+    fun normalizeChunk(token: String): String {
+        if (!normalizeSpaces) return token
+        return when (token) {
+            "\t" -> " "
+            else -> token
+        }
+    }
+
+    suspend fun emitChunk(token: String) {
+        emit(normalizeChunk(token))
+        delay(delayMillis)
+    }
+
+    /**
+     * Try to consume one *safe* chunk from the front of the buffer.
+     *
+     * Returns:
+     * - chunk string to emit, and bookkeeping info
+     * - or null if we must wait for more input (e.g., open "**" without closing "**")
+     */
+    data class Consumed(
+        val chunk: String,
+        val isMarkdownSpan: Boolean,
+        val wordsInChunk: Int
+    )
+
+    fun StringBuilder.consumeSafeChunkOrNull(): Consumed? {
+        if (isEmpty()) return null
+
+        // 1) Newline as atomic chunk (very important for markdown layout).
+        if (startsWithToken("\n")) {
+            delete(0, 1)
+            return Consumed(chunk = "\n", isMarkdownSpan = false, wordsInChunk = 0)
+        }
+
+        // 2) If the buffer starts with a paired delimiter, only emit if we can see the closing delimiter.
+        for (delim in pairedDelims) {
+            if (startsWithToken(delim)) {
+                val start = delim.length
+                val endIdx = indexOfToken(delim, start)
+                if (endIdx == -1) {
+                    // We have an opening delimiter but no closing one yet -> wait.
+                    return null
+                }
+
+                // Include both delimiters: "**hello**", "`code`", "```block```"
+                val spanEndExclusive = endIdx + delim.length
+                val span = substring(0, spanEndExclusive)
+                delete(0, spanEndExclusive)
+
+                return Consumed(
+                    chunk = span,
+                    isMarkdownSpan = true,
+                    wordsInChunk = countWordsIn(span)
+                )
+            }
+        }
+
+        // 3) Basic link/image safety: if it starts like [..](..) or ![..](..),
+        //    do not emit partial; wait until closing ')' exists.
+        //    This avoids streaming "[text](" which renders poorly.
+        if (startsWithToken("![" ) || startsWithToken("[")) {
+            val bang = startsWithToken("![")
+            val openBracketPos = if (bang) 1 else 0
+            // Find the closing ']' first.
+            val closeBracket = indexOfToken("]", openBracketPos + 1)
+            if (closeBracket == -1) return null
+
+            // Must be followed by '(' to be a link/image; if not, fall through to plain text behavior.
+            val hasParen =
+                closeBracket + 1 < length && this[closeBracket + 1] == '('
+
+            if (hasParen) {
+                val closeParen = indexOfToken(")", closeBracket + 2)
+                if (closeParen == -1) return null
+
+                val endExclusive = closeParen + 1
+                val link = substring(0, endExclusive)
+                delete(0, endExclusive)
+
+                return Consumed(
+                    chunk = link,
+                    isMarkdownSpan = true, // treat as atomic markdown construct
+                    wordsInChunk = countWordsIn(link)
+                )
+            }
+        }
+
+        // 4) Whitespace: emit a single normalized space (or newline handled above).
+        //    Optionally collapse runs of spaces/tabs to one space.
+        val first = this[0]
+        if (first == ' ' || first == '\t') {
+            var i = 0
+            while (i < length && (this[i] == ' ' || this[i] == '\t')) i++
+            delete(0, i)
+            return Consumed(chunk = " ", isMarkdownSpan = false, wordsInChunk = 0)
+        }
+
+        // 5) Headings / list / quote markers at the start are safe as atomic-ish markers,
+        //    but we must not accidentally emit part of a paired delimiter.
+        //    (Paired delimiters were already checked above.)
+        val singleSpecials = listOf("#", ">", "-", "*", "+", "|", "(", ")", "[", "]", "!")
+        for (sp in singleSpecials) {
+            if (startsWithToken(sp)) {
+                delete(0, sp.length)
+                return Consumed(chunk = sp, isMarkdownSpan = false, wordsInChunk = 0)
+            }
+        }
+
+        // 6) Plain word-ish chunk: consume until whitespace/newline or until we reach a paired delimiter boundary.
+        //    We deliberately stop before a paired delimiter so we can enforce completeness on the next iteration.
+        var i = 0
+        while (i < length) {
+            val ch = this[i]
+            if (ch == '\n' || ch == ' ' || ch == '\t') break
+
+            // Stop if a paired delimiter begins at this position (e.g., "... **bold" case).
+            var hitsPaired = false
+            for (delim in pairedDelims) {
+                val canCheck = i + delim.length <= length
+                if (canCheck) {
+                    var ok = true
+                    for (k in delim.indices) {
+                        if (this[i + k] != delim[k]) {
+                            ok = false
+                            break
+                        }
+                    }
+                    if (ok) {
+                        hitsPaired = true
+                        break
+                    }
+                }
+            }
+            if (hitsPaired) break
+
             i++
         }
 
-        // If no boundary found yet, wait for more (prevents partial token mistakes)
-        if (i == length) return null
-
-        val run = substring(0, i)
-        delete(0, i)
-        return run
-    }
-
-    fun normalizeToken(token: String): String =
-        when (token) {
-            "\t", " " -> " " // normalize whitespace into a space; we do not treat space as special
-            else -> token
+        if (i == 0) {
+            // Nothing safe to consume (likely because we’re at a delimiter boundary but not handled)
+            return null
         }
 
-    suspend fun emitChunkIfNeeded(chunk: StringBuilder) {
-        if (chunk.isEmpty()) return
-        emit(chunk.toString())
-        delay(delayMillis)
-        chunk.clear()
+        val word = substring(0, i)
+        delete(0, i)
+
+        // Optionally consume a single following space/tab and attach it to reduce token count/recomposition.
+        // (Newline must remain separate.)
+        if (isNotEmpty() && (this[0] == ' ' || this[0] == '\t')) {
+            var j = 0
+            while (j < length && (this[j] == ' ' || this[j] == '\t')) j++
+            delete(0, j)
+            return Consumed(
+                chunk = word + " ",
+                isMarkdownSpan = false,
+                wordsInChunk = 1
+            )
+        }
+
+        return Consumed(
+            chunk = word,
+            isMarkdownSpan = false,
+            wordsInChunk = 1
+        )
     }
-
-    val chunk = StringBuilder()
-    var tokenCount = 0
-
-    fun wouldOverflow(next: String): Boolean =
-        tokenCount >= maxTokensPerChunk || (chunk.length + next.length) > maxCharsPerChunk
 
     collect { delta ->
         if (delta.isEmpty()) return@collect
 
-        // Normalize CRLF/CR into LF
+        // Normalize CRLF/CR to LF so newline handling is consistent.
         sb.append(delta.replace("\r\n", "\n").replace("\r", "\n"))
 
-        while (true) {
-            val special = sb.consumeSpecialOrNull()
-            val tokenRaw = special ?: sb.consumeTextRunOrNull() ?: break
+        var wordsBudget = maxCompletedWordsPerFlush
+        var markdownBudget = maxCompletedMarkdownSpansPerFlush
 
-            val token = normalizeToken(tokenRaw)
+        while (wordsBudget > 0 && markdownBudget > 0) {
+            val consumed = sb.consumeSafeChunkOrNull() ?: break
 
-            // If token is a hard boundary, flush current chunk BEFORE adding it
-            if (tokenRaw in hardBoundaries) {
-                emitChunkIfNeeded(chunk)
-                chunk.append(token)
-                tokenCount = 1
-                // Hard boundary should flush immediately too (keeps rendering stable)
-                emitChunkIfNeeded(chunk)
-                tokenCount = 0
-                continue
+            // Enforce budgets:
+            // - wordsBudget counts words in *any* emitted chunk (including completed markdown spans)
+            // - markdownBudget counts completed paired spans + completed links/images
+            val isSpan = consumed.isMarkdownSpan
+            val words = consumed.wordsInChunk
+
+            if (isSpan) {
+                if (markdownBudget <= 0) {
+                    // Put it back (rare; budgets usually checked in loop condition).
+                    sb.insert(0, consumed.chunk)
+                    break
+                }
+                markdownBudget -= 1
             }
 
-            // For normal text runs / soft tokens: append until reaching chunk limits
-            if (wouldOverflow(token)) {
-                emitChunkIfNeeded(chunk)
-                tokenCount = 0
+            if (words > 0) {
+                if (wordsBudget - words < 0) {
+                    // Put it back; wait for next flush.
+                    sb.insert(0, consumed.chunk)
+                    break
+                }
+                wordsBudget -= words
             }
 
-            chunk.append(token)
-            tokenCount++
-        }
-
-        // Heuristic: if we collected a decent chunk and stream is fast, emit periodically
-        if (chunk.length >= maxCharsPerChunk) {
-            emitChunkIfNeeded(chunk)
-            tokenCount = 0
+            emitChunk(consumed.chunk)
         }
     }
 
-    if (flushRemainderOnComplete) {
-        // flush whatever is left in chunk first
-        emitChunkIfNeeded(chunk)
-
-        // emit any leftover buffer (even if incomplete)
-        if (sb.isNotEmpty()) {
-            emit(sb.toString())
-            delay(delayMillis)
-        }
-    } else {
-        emitChunkIfNeeded(chunk)
+    if (flushRemainderOnComplete && sb.isNotEmpty()) {
+        // At completion, emit remaining buffer even if it contains incomplete markdown.
+        // (If you prefer to *never* emit incomplete constructs, set flushRemainderOnComplete=false.)
+        emitChunk(sb.toString())
     }
 }

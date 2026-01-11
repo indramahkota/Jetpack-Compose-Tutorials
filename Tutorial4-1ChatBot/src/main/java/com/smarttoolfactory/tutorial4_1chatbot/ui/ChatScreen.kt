@@ -391,7 +391,7 @@ fun ChatScreen(
         InputArea(
             modifier = Modifier
                 .align(Alignment.BottomStart)
-                .border(2.dp, Color.Cyan)
+//                .border(2.dp, Color.Cyan)
                 .background(brush = inputBrush)
                 .padding(bottom = bottomPadding, start = 16.dp, end = 16.dp)
                 .navigationBarsPadding()

@@ -10,13 +10,63 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.halilibo.richtext.commonmark.Markdown
 import com.halilibo.richtext.ui.BasicRichText
+import com.halilibo.richtext.ui.RichTextStyle
 import com.smarttoolfactory.tutorial4_1chatbot.ui.Message
 import com.smarttoolfactory.tutorial4_1chatbot.ui.MessageStatus
 import com.smarttoolfactory.tutorial4_1chatbot.ui.Role
 
+val style = RichTextStyle.Default.copy(
+    headingStyle = { index, textStyle ->
+        when (index) {
+            1 -> textStyle.copy(
+                fontSize = 24.sp,
+                fontWeight = FontWeight.SemiBold,
+                lineHeight = 32.sp,
+                color = Color.Red
+            )
+
+            2 -> textStyle.copy(
+                fontSize = 20.sp,
+                fontWeight = FontWeight.SemiBold,
+                lineHeight = 28.sp,
+                color = Color.Red
+            )
+
+            3 -> textStyle.copy(
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Medium,
+                lineHeight = 26.sp,
+                color = Color.Red
+            )
+
+            4 -> textStyle.copy(
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium,
+                lineHeight = 24.sp,
+                color = Color.Red
+            )
+
+            5 -> textStyle.copy(
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                lineHeight = 22.sp,
+                color = Color.Red
+            )
+
+            else -> textStyle.copy(
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                lineHeight = 20.sp,
+                color = Color.Red
+            )
+        }
+    }
+)
 
 @Composable
 fun MessageRow(
@@ -64,7 +114,8 @@ fun MessageRow(
                     ) {
                         Column(Modifier.padding(16.dp)) {
                             BasicRichText(
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier.fillMaxWidth(),
+                                style = style
                             ) {
                                 Markdown(message.text)
                             }

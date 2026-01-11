@@ -21,7 +21,6 @@ import com.halilibo.richtext.ui.BasicRichText
 import com.halilibo.richtext.ui.RichTextScope
 import com.halilibo.richtext.ui.RichTextStyle
 import com.halilibo.richtext.ui.RichTextThemeProvider
-import dev.jeziellago.compose.markdowntext.MarkdownText
 import io.noties.markwon.Markwon
 import io.noties.markwon.ext.tables.TablePlugin
 
@@ -135,11 +134,81 @@ fun MarkdownTextSample() {
 
 @Preview
 @Composable
-fun MarkDownTextPreview() {
-    MarkdownText(
-        markdown = markdownText,
-    )
+fun MarkDownHeaderStylePreview() {
+    val text = """
+        # Demo
+        
+        ## Demo
+        
+        ### Demo
+        
+        #### Demo
+        
+        ##### Demo
+        
+        ###### Demo
+        This is **regular** text for reference
+        
+        This is __regular__ text for reference
+    """.trimIndent()
+
+    Column {
+
+        Text("Default Header Style", fontSize = 20.sp)
+        BasicRichText(
+            modifier = Modifier.padding(vertical = 16.dp),
+            style = RichTextStyle.Default
+        ) {
+            Markdown(text)
+        }
+
+
+        Text("Custom Header Style", fontSize = 20.sp)
+        BasicRichText(
+            modifier = Modifier.padding(vertical = 16.dp),
+            style = RichTextStyle.Default.copy(
+                headingStyle = { index, textStyle ->
+                    when (index) {
+                        1 -> textStyle.copy(
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            lineHeight = 32.sp
+                        )
+                        2 -> textStyle.copy(
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            lineHeight = 28.sp
+                        )
+                        3 -> textStyle.copy(
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Medium,
+                            lineHeight = 26.sp
+                        )
+                        4 -> textStyle.copy(
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Medium,
+                            lineHeight = 24.sp
+                        )
+                        5 -> textStyle.copy(
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            lineHeight = 22.sp
+                        )
+                        else -> textStyle.copy(
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            lineHeight = 20.sp
+                        )
+                    }
+                }
+            )
+        ) {
+            Markdown(text)
+        }
+
+    }
 }
+
 
 @Preview
 @Composable
