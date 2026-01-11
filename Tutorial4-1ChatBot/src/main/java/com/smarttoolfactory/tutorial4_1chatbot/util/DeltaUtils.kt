@@ -84,29 +84,6 @@ fun Flow<String>.chunkDeltasWithDelay(
     }
 }
 
-fun Flow<String>.deltasToLinesNormalized(
-    flushRemainderOnComplete: Boolean = true
-): Flow<String> = flow {
-    val sb = StringBuilder()
-
-    collect { delta ->
-        if (delta.isEmpty()) return@collect
-
-        // Normalize CRLF and CR into LF so line splitting is consistent
-        val normalized = delta.replace("\r\n", "\n").replace("\r", "\n")
-        sb.append(normalized)
-
-        while (true) {
-            val idx = sb.indexOf('\n')
-            if (idx < 0) break
-            emit(sb.substring(0, idx))
-            sb.delete(0, idx + 1)
-        }
-    }
-
-    if (flushRemainderOnComplete && sb.isNotEmpty()) emit(sb.toString())
-}
-
 fun Flow<String>.deltasToLinesWithDelay(
     emitTrailingNewline: Boolean = false,
     flushRemainderOnComplete: Boolean = true,
