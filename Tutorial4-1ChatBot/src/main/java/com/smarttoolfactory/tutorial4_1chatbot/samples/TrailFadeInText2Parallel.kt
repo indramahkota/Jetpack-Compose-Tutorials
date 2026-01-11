@@ -14,6 +14,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -39,7 +40,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlin.collections.forEachIndexed
 import kotlin.coroutines.cancellation.CancellationException
 
 private val deltas = listOf(
@@ -48,6 +48,13 @@ private val deltas = listOf(
     "Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book. It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged. ",
     " cycles ", "customer", " expectations shift", " continuously."
 )
+
+internal const val singleLongText =
+    "Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has " +
+            "been the industry's standard dummy text ever since the 1500s, when an unknown " +
+            "printer took a galley of type and scrambled it to make a type specimen book. It has " +
+            "survived not only five centuries, but also the leap into electronic typesetting, " +
+            "remaining essentially unchanged. "
 
 @Preview
 @Composable
@@ -81,21 +88,21 @@ private fun TrailFadeInParallelPreview() {
         Text("TrailFadeInText", fontSize = 18.sp)
         Spacer(modifier = Modifier.height(16.dp))
         TrailFadeInText(
-            text = chunkText,
+            text = singleLongText,
             modifier = Modifier.fillMaxWidth().height(160.dp)
         )
 
         Text("TrailFadeInTextParallelWithChannel", fontSize = 18.sp)
         Spacer(modifier = Modifier.height(16.dp))
         TrailFadeInTextParallelWithChannel(
-            text = chunkText,
+            text = singleLongText,
             modifier = Modifier.fillMaxWidth().height(160.dp)
         )
 
-        Text("TrailFadeInTextThatLags", fontSize = 18.sp)
+        Text("TrailFadeInTextParallelWithChannel2", fontSize = 18.sp)
         Spacer(modifier = Modifier.height(16.dp))
         TrailFadeInTextParallelWithChannel2(
-            text = chunkText,
+            text = singleLongText,
             modifier = Modifier.fillMaxWidth().height(160.dp)
         )
 
@@ -139,6 +146,10 @@ private fun TrailFadeInText(
     text: String,
     start: Int = 0,
     end: Int = text.lastIndex,
+    staggerMs: Long = 20L,
+    revealMs: Int = 1000,
+    lingerMs: Long = 80L,
+    segmentation: LineSegmentation = LineSegmentation.None,
     style: TextStyle = TextStyle.Default
 ) {
 
@@ -177,7 +188,8 @@ private fun TrailFadeInText(
                     calculateBoundingRectList(
                         textLayoutResult = textLayout,
                         startIndex = startIndex,
-                        endIndex = endIndex
+                        endIndex = endIndex,
+                        segmentation = segmentation
                     ).map {
                         RectWithAnimation(
                             rect = it,
@@ -201,13 +213,14 @@ private fun TrailFadeInText(
 
                 newList.forEachIndexed { index, rectWithAnimation ->
                     scope.launch {
-                        delay(20L * index)
+                        delay(staggerMs * index)
+
                         try {
                             rectWithAnimation.animatable.animateTo(
                                 targetValue = 1f,
-                                animationSpec = tween(1000, easing = LinearEasing)
+                                animationSpec = tween(revealMs, easing = LinearEasing)
                             )
-                            delay(60)
+                            delay(lingerMs)
                             rectList.remove(rectWithAnimation)
                         } catch (e: CancellationException) {
                             println(
@@ -233,6 +246,10 @@ private fun TrailFadeInTextParallelWithChannel(
     text: String,
     start: Int = 0,
     end: Int = text.lastIndex,
+    staggerMs: Long = 20L,
+    revealMs: Int = 1000,
+    lingerMs: Long = 80L,
+    segmentation: LineSegmentation = LineSegmentation.None,
     style: TextStyle = TextStyle.Default
 ) {
     var startIndex by remember { mutableIntStateOf(start) }
@@ -260,25 +277,17 @@ private fun TrailFadeInTextParallelWithChannel(
 
                 val job = launch {
                     // Optional stagger, keeps parallel but slightly cascaded.
-                    delay(20L * index)
+                    delay(staggerMs * index)
 
                     try {
                         rectWithAnimation.animatable.animateTo(
                             targetValue = 1f,
-                            animationSpec = tween(1000, easing = LinearEasing)
+                            animationSpec = tween(revealMs, easing = LinearEasing)
                         )
-                        delay(60)
+                        delay(lingerMs)
 
-                         rectList.remove(rectWithAnimation)
+                        rectList.remove(rectWithAnimation)
 
-                    } catch (e: CancellationException) {
-                        println(
-                            "CANCELED for " +
-                                    "startIndex: $startIndex, " +
-                                    "endIndex: $endIndex, " +
-                                    "index: $index.\n" +
-                                    "message: ${e.message}"
-                        )
                     } finally {
                         jobsByRectId.remove(id)
                     }
@@ -302,7 +311,8 @@ private fun TrailFadeInTextParallelWithChannel(
             val newRects = calculateBoundingRectList(
                 textLayoutResult = textLayout,
                 startIndex = startIndex,
-                endIndex = endIndex
+                endIndex = endIndex,
+                segmentation = segmentation
             ).map { rect ->
                 RectWithAnimation(
                     id = "${startIndex}_${endIndex}_${rect.top}_${rect.left}_${rect.right}_${rect.bottom}",
@@ -322,6 +332,108 @@ private fun TrailFadeInTextParallelWithChannel(
         },
         text = text,
         style = style
+    )
+}
+
+@Composable
+fun TrailFadeInTextParallelWithChannel2(
+    modifier: Modifier = Modifier,
+    text: String,
+    style: TextStyle = TextStyle.Default,
+    staggerMs: Long = 20L,
+    revealMs: Int = 1000,
+    lingerMs: Long = 80L
+) {
+    // Append-only tracking
+    var lastProcessedExclusive by remember { mutableIntStateOf(0) }
+
+    val activeRects = remember { mutableStateListOf<RectWithAnimation>() }
+
+    val rectBatchChannel =
+        remember { Channel<List<RectWithAnimation>>(capacity = Channel.UNLIMITED) }
+    val jobsById = remember { mutableStateMapOf<String, Job>() }
+
+    // Dispatcher: launches per-rect animations in parallel (with stagger)
+    LaunchedEffect(Unit) {
+        for (batch in rectBatchChannel) {
+            batch.forEachIndexed { index, rectWithAnimation ->
+                if (jobsById.containsKey(rectWithAnimation.id)) return@forEachIndexed
+
+                jobsById[rectWithAnimation.id] = launch {
+                    // Stagger start.
+                    // NOTE: rect is already in activeRects -> it will mask until its progress advances.
+                    delay(staggerMs * index)
+
+                    try {
+                        rectWithAnimation.animatable.animateTo(
+                            targetValue = 1f,
+                            animationSpec = tween(revealMs, easing = LinearEasing)
+                        )
+                        delay(lingerMs)
+                    } finally {
+                        activeRects.remove(rectWithAnimation)
+                        jobsById.remove(rectWithAnimation.id)
+                    }
+                }
+            }
+        }
+    }
+
+    // Cleanup
+    DisposableEffect(Unit) {
+        onDispose {
+            rectBatchChannel.close()
+            jobsById.values.forEach { it.cancel() }
+            jobsById.clear()
+            activeRects.clear()
+        }
+    }
+
+    Text(
+        modifier = modifier
+            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+            .drawWithContent {
+                drawContent()
+                drawFadeInRects(activeRects)
+            },
+        text = text,
+        style = style,
+        onTextLayout = { layout ->
+            val len = layout.layoutInput.text.length
+            val startInclusive = lastProcessedExclusive.coerceIn(0, len)
+            if (startInclusive >= len) return@Text
+
+            val endInclusive = (len - 1).coerceAtLeast(startInclusive)
+
+            val rects = calculateBoundingRectList(
+                textLayoutResult = layout,
+                startIndex = startInclusive,
+                endIndex = endInclusive,
+                segmentation = LineSegmentation.Words()
+            )
+
+            lastProcessedExclusive = len
+            if (rects.isEmpty()) return@Text
+
+            // IDs based on logical range + per-line index (stable)
+            val startLine = layout.getLineForOffset(startInclusive)
+            val endLine = layout.getLineForOffset(endInclusive)
+
+            val batch = rects.mapIndexed { i, rect ->
+                val line = (startLine + i).coerceAtMost(endLine)
+                RectWithAnimation(
+                    id = "range_${startInclusive}_${endInclusive}_line_$line",
+                    startIndex = startInclusive,
+                    endIndex = endInclusive,
+                    rect = rect
+                )
+            }
+
+            activeRects.addAll(batch)
+
+            // Kick animations
+            rectBatchChannel.trySend(batch)
+        }
     )
 }
 

@@ -38,7 +38,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlin.collections.forEachIndexed
 
 private val deltas = listOf(
     "defined ", "by volatility, complexity", ", and accelerating\n",
@@ -81,13 +80,12 @@ private fun TrailFadeInParallelWithCallbackPreview() {
         Text("TrailFadeInTextWithCallback", fontSize = 18.sp)
         Spacer(modifier = Modifier.height(16.dp))
         TrailFadeInTextWithCallback(
-            text = chunkText,
+            text = singleLongText,
             modifier = Modifier.fillMaxWidth().height(160.dp),
             onTailRectComplete = {
                 Toast.makeText(context, "onBatchComplete", Toast.LENGTH_SHORT).show()
             }
         )
-
 
         Spacer(modifier = Modifier.weight(1f))
 
@@ -129,6 +127,9 @@ private fun TrailFadeInTextWithCallback(
     text: String,
     start: Int = 0,
     end: Int = text.lastIndex,
+    staggerMs: Long = 20L,
+    revealMs: Int = 1000,
+    lingerMs: Long = 80L,
     style: TextStyle = TextStyle.Default,
     onTailRectComplete: (() -> Unit)? = null
 ) {
@@ -156,27 +157,17 @@ private fun TrailFadeInTextWithCallback(
                 if (jobsById.containsKey(rectWithAnimatable.id)) return@forEachIndexed
 
                 val job = launch {
-                    delay(20L * index)
+                    delay(staggerMs * index)
                     try {
-                        val rectWidth = (1.8f * rectWithAnimatable.rect.width).toInt()
                         rectWithAnimatable.animatable.animateTo(
                             targetValue = 1f,
-                            animationSpec = tween(1000, easing = LinearEasing)
+                            animationSpec = tween(revealMs, easing = LinearEasing)
                         )
-                        delay(60)
+                        delay(lingerMs)
                     } finally {
                         jobsById.remove(rectWithAnimatable.id)
 
                         val tail = latestTailIndex
-                        val rectWidth = rectWithAnimatable.rect.width.toInt()
-
-                        println(
-                            "Finally start: ${rectWithAnimatable.charStart}, " +
-                                    "end:${rectWithAnimatable.charEnd}, " +
-                                    "rectWidth:${rectWidth}, " +
-                                    "tail: $tail, " +
-                                    "lastNotifiedIndex: $lastNotifiedTailIndex"
-                        )
 
                         if (tail >= 0 &&
                             rectWithAnimatable.covers(tail) &&
