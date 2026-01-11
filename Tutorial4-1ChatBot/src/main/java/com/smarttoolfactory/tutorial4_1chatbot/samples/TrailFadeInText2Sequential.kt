@@ -208,7 +208,7 @@ private fun TrailFadeInSequentialChannelText(
         onTextLayout = { textLayout ->
             endIndex = text.lastIndex
 
-            val newRects = calculateBoundingRects(
+            val newRects = calculateBoundingRectList(
                 textLayoutResult = textLayout,
                 startIndex = startIndex,
                 endIndex = endIndex
@@ -282,7 +282,7 @@ private fun TrailFadeInSequentialSharedFlowText(
         onTextLayout = { layout ->
             endIndex = text.lastIndex
 
-            val newRects = calculateBoundingRects(
+            val newRects = calculateBoundingRectList(
                 textLayoutResult = layout,
                 startIndex = startIndex,
                 endIndex = endIndex

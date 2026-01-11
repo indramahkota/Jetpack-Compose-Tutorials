@@ -1,7 +1,5 @@
 package com.smarttoolfactory.tutorial4_1chatbot.samples
 
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Column
@@ -27,7 +25,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
@@ -70,7 +67,7 @@ private fun TrailFadeInParallelPreview() {
     LaunchedEffect(startAnimation) {
         delay(1000)
         deltas.toWordFlow(
-            delayMillis = 60,
+            delayMillis = 120,
             wordsPerEmission = 3
         ).collect {
 //            println("Collect: $it")
@@ -97,7 +94,7 @@ private fun TrailFadeInParallelPreview() {
 
         Text("TrailFadeInTextThatLags", fontSize = 18.sp)
         Spacer(modifier = Modifier.height(16.dp))
-        TrailFadeInTextThatLags(
+        TrailFadeInTextParallelWithChannel2(
             text = chunkText,
             modifier = Modifier.fillMaxWidth().height(160.dp)
         )
@@ -177,7 +174,7 @@ private fun TrailFadeInText(
                 // behind and some deltas are shown since rectangle lag behind them.
 
                 val newList: List<RectWithAnimation> =
-                    calculateBoundingRects(
+                    calculateBoundingRectList(
                         textLayoutResult = textLayout,
                         startIndex = startIndex,
                         endIndex = endIndex
@@ -229,7 +226,6 @@ private fun TrailFadeInText(
         style = style
     )
 }
-
 
 @Composable
 private fun TrailFadeInTextParallelWithChannel(
@@ -303,7 +299,7 @@ private fun TrailFadeInTextParallelWithChannel(
         onTextLayout = { textLayout ->
             endIndex = text.lastIndex
 
-            val newRects = calculateBoundingRects(
+            val newRects = calculateBoundingRectList(
                 textLayoutResult = textLayout,
                 startIndex = startIndex,
                 endIndex = endIndex
@@ -367,7 +363,7 @@ private fun TrailFadeInTextThatLags(
             // behind and some deltas are shown since rectangle lag behind them.
 
             val newList: List<RectWithAnimation> =
-                calculateBoundingRects(
+                calculateBoundingRectList(
                     textLayoutResult = textLayout,
                     startIndex = startIndex,
                     endIndex = endIndex
@@ -423,7 +419,6 @@ private fun TrailFadeInTextThatLags(
         style = style
     )
 }
-
 
 private fun ContentDrawScope.drawFadeInRects(rectList: List<RectWithAnimation>) {
     rectList.forEachIndexed { _, rectWithAnimation ->
