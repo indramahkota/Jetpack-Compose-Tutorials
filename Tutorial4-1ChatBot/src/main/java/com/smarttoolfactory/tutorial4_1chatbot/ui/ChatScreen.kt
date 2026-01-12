@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.LazyColumn
@@ -388,45 +387,51 @@ fun ChatScreen(
             )
         )
 
-        InputArea(
+        Column(
             modifier = Modifier
                 .align(Alignment.BottomStart)
-//                .border(2.dp, Color.Cyan)
-                .background(brush = inputBrush)
-                .padding(bottom = bottomPadding, start = 16.dp, end = 16.dp)
+                .imePadding()
                 .navigationBarsPadding()
-                .height(inputHeight)
-                .fillMaxWidth(),
-            focusRequester = focusRequester,
-            value = input,
-            onValueChange = {
-                input = it
-            },
-            onClick = {
-                focusManager.clearFocus()
-                val text = input.trim()
-                if (text.isNotEmpty()) {
-                    chatViewModel.sendMessage(text)
-                    input = ""
-                }
-            }
-        )
+        ) {
 
-        JumpToBottomButton(
-            modifier = Modifier
-                .navigationBarsPadding()
-                .offset(y = (-90).dp)
-                .align(Alignment.BottomEnd),
-            enabled = jumpToBottomButtonEnabled,
-            onClick = {
-                coroutineScope.launch {
-                    listState.scrollToItem(
-                        index = messages.lastIndex,
-                        scrollOffset = Int.MAX_VALUE
-                    )
+            JumpToBottomButton(
+                modifier = Modifier
+                    .padding(bottom = 16.dp)
+                    .align(Alignment.End),
+                enabled = jumpToBottomButtonEnabled,
+                onClick = {
+                    coroutineScope.launch {
+                        listState.scrollToItem(
+                            index = messages.lastIndex,
+                            scrollOffset = Int.MAX_VALUE
+                        )
+                    }
                 }
-            }
-        )
+            )
+
+            InputArea(
+                modifier = Modifier
+//                    .border(2.dp, Color.Cyan)
+                    .background(brush = inputBrush)
+                    .padding(bottom = bottomPadding, start = 16.dp, end = 16.dp)
+                    .navigationBarsPadding()
+                    .heightIn(min = inputHeight)
+                    .fillMaxWidth(),
+                focusRequester = focusRequester,
+                value = input,
+                onValueChange = {
+                    input = it
+                },
+                onClick = {
+                    focusManager.clearFocus()
+                    val text = input.trim()
+                    if (text.isNotEmpty()) {
+                        chatViewModel.sendMessage(text)
+                        input = ""
+                    }
+                }
+            )
+        }
     }
 }
 
