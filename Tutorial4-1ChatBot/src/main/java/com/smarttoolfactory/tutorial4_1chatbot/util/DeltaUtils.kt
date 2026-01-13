@@ -1,23 +1,26 @@
 package com.smarttoolfactory.tutorial4_1chatbot.util
 
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.smarttoolfactory.tutorial4_1chatbot.samples.TrailFadeInText
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.runtime.*
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
-import com.halilibo.richtext.commonmark.Markdown
-import com.halilibo.richtext.ui.BasicRichText
-import com.halilibo.richtext.ui.RichTextStyle
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.scan
-import kotlinx.coroutines.flow.collectLatest
-
 
 /**
  * Preview that demonstrates streaming-safe markdown chunking.
@@ -109,25 +112,40 @@ fun MarkdownTokenStreamPreview() {
         rendered = ""
 
         deltas
+//            .deltasToMarkdownTokensWithDelay(
+//                delayMillis = 120L,
+//                flushRemainderOnComplete = true,
+//                maxCompletedWordsPerFlush = 4,
+//                maxCompletedMarkdownSpansPerFlush = 3
+//            )
             .deltasToMarkdownTokensWithDelay(
-                delayMillis = 60L,
-                flushRemainderOnComplete = true,
-                maxCompletedWordsPerFlush = 12,
-                maxCompletedMarkdownSpansPerFlush = 4
+                delayMillis = 60
             )
-            .scan("") { acc, token -> acc + token }
-            .collectLatest { rendered = it }
+
+            .collect {
+                println("Text: $it")
+                rendered += it
+            }
     }
 
-    Column(Modifier
-        .verticalScroll(rememberScrollState())
-        .padding(16.dp)) {
-        BasicRichText(
-            modifier = Modifier.padding(vertical = 16.dp),
-            style = RichTextStyle.Default
-        ) {
-            Markdown(rendered)
-        }
+    Column(
+        Modifier
+            .systemBarsPadding()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp)
+    ) {
+
+        TrailFadeInText(
+            text = rendered,
+            debug = true,
+            style = TextStyle.Default.copy(fontSize = 18.sp)
+        )
+//        BasicRichText(
+//            modifier = Modifier.padding(vertical = 16.dp),
+//            style = RichTextStyle.Default
+//        ) {
+//            Markdown(rendered)
+//        }
     }
 }
 
@@ -375,7 +393,7 @@ fun Flow<String>.deltasToMarkdownTokensWithDelay(
         // 3) Basic link/image safety: if it starts like [..](..) or ![..](..),
         //    do not emit partial; wait until closing ')' exists.
         //    This avoids streaming "[text](" which renders poorly.
-        if (startsWithToken("![" ) || startsWithToken("[")) {
+        if (startsWithToken("![") || startsWithToken("[")) {
             val bang = startsWithToken("![")
             val openBracketPos = if (bang) 1 else 0
             // Find the closing ']' first.

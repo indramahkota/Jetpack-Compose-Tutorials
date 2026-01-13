@@ -81,6 +81,7 @@ private fun TrailFadeInParallelWithCallbackPreview() {
         Text("TrailFadeInTextWithCallback", fontSize = 18.sp, color = if (completed1) Color.Green else Color.Red)
         Spacer(modifier = Modifier.height(16.dp))
         TrailFadeInTextWithCallback(
+//            text = chunkText,
             text = singleLongText,
             modifier = Modifier.fillMaxWidth().height(160.dp),
             onTailRectComplete = {
@@ -92,6 +93,7 @@ private fun TrailFadeInParallelWithCallbackPreview() {
         Text("TrailFadeInTextWithCallback2", fontSize = 18.sp, color = if (completed2) Color.Green else Color.Red)
         Spacer(modifier = Modifier.height(16.dp))
         TrailFadeInTextWithCallback(
+//            text = chunkText,
             text = singleLongText,
             modifier = Modifier.fillMaxWidth().height(160.dp),
             segmentation = SpanSegmentation.Words(),

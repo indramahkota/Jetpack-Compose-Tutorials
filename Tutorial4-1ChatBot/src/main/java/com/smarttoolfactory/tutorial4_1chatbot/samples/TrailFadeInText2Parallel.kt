@@ -30,7 +30,9 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.tooling.preview.Preview
@@ -88,21 +90,21 @@ private fun TrailFadeInParallelPreview() {
         Text("TrailFadeInText", fontSize = 18.sp)
         Spacer(modifier = Modifier.height(16.dp))
         TrailFadeInText(
-            text = singleLongText,
+            text = chunkText,
             modifier = Modifier.fillMaxWidth().height(160.dp)
         )
 
         Text("TrailFadeInTextParallelWithChannel", fontSize = 18.sp)
         Spacer(modifier = Modifier.height(16.dp))
         TrailFadeInTextParallelWithChannel(
-            text = singleLongText,
+            text = chunkText,
             modifier = Modifier.fillMaxWidth().height(160.dp)
         )
 
-        Text("TrailFadeInTextParallelWithChannel2", fontSize = 18.sp)
+        Text("TrailFadeInTextThatLags", fontSize = 18.sp)
         Spacer(modifier = Modifier.height(16.dp))
-        TrailFadeInTextParallelWithChannel2(
-            text = singleLongText,
+        TrailFadeInTextThatLags(
+            text = chunkText,
             modifier = Modifier.fillMaxWidth().height(160.dp)
         )
 
@@ -141,7 +143,7 @@ private fun TrailFadeInParallelPreview() {
 }
 
 @Composable
-private fun TrailFadeInText(
+internal fun TrailFadeInText(
     modifier: Modifier = Modifier,
     text: String,
     start: Int = 0,
@@ -150,7 +152,8 @@ private fun TrailFadeInText(
     revealMs: Int = 1000,
     lingerMs: Long = 80L,
     segmentation: LineSegmentation = LineSegmentation.None,
-    style: TextStyle = TextStyle.Default
+    style: TextStyle = TextStyle.Default,
+    debug: Boolean = false
 ) {
 
     var startIndex by remember {
@@ -174,7 +177,7 @@ private fun TrailFadeInText(
             }
             .drawWithContent {
                 drawContent()
-                drawFadeInRects(rectList)
+                drawFadeInRects(rectList, debug)
             },
         onTextLayout = { textLayout: TextLayoutResult ->
             endIndex = text.lastIndex
@@ -198,16 +201,6 @@ private fun TrailFadeInText(
                         )
                     }
 
-//                val newList: List<RectWithAnimation> = computeDiffRects(
-//                    layout = textLayout,
-//                    start = startIndex,
-//                    endExclusive = endIndex + 1
-//                ).map {
-//                    RectWithAnimation(
-//                        rect = it
-//                    )
-//                }
-
                 rectList.addAll(newList)
                 startIndex = endIndex + 1
 
@@ -221,15 +214,9 @@ private fun TrailFadeInText(
                                 animationSpec = tween(revealMs, easing = LinearEasing)
                             )
                             delay(lingerMs)
-                            rectList.remove(rectWithAnimation)
-                        } catch (e: CancellationException) {
-                            println(
-                                "CANCELED for " +
-                                        "startIndex: $startIndex, " +
-                                        "endIndex: $endIndex, " +
-                                        "index: $index.\n" +
-                                        "message: ${e.message}"
-                            )
+                        } finally {
+//                            rectList.remove(rectWithAnimation)
+                            rectWithAnimation.animatable.snapTo(1f)
                         }
                     }
                 }
@@ -241,7 +228,7 @@ private fun TrailFadeInText(
 }
 
 @Composable
-private fun TrailFadeInTextParallelWithChannel(
+internal fun TrailFadeInTextParallelWithChannel(
     modifier: Modifier = Modifier,
     text: String,
     start: Int = 0,
@@ -250,7 +237,8 @@ private fun TrailFadeInTextParallelWithChannel(
     revealMs: Int = 1000,
     lingerMs: Long = 80L,
     segmentation: LineSegmentation = LineSegmentation.None,
-    style: TextStyle = TextStyle.Default
+    style: TextStyle = TextStyle.Default,
+    debug: Boolean = false
 ) {
     var startIndex by remember { mutableIntStateOf(start) }
     var endIndex by remember { mutableIntStateOf(end) }
@@ -285,10 +273,8 @@ private fun TrailFadeInTextParallelWithChannel(
                             animationSpec = tween(revealMs, easing = LinearEasing)
                         )
                         delay(lingerMs)
-
-                        rectList.remove(rectWithAnimation)
-
                     } finally {
+                        rectList.remove(rectWithAnimation)
                         jobsByRectId.remove(id)
                     }
                 }
@@ -303,7 +289,7 @@ private fun TrailFadeInTextParallelWithChannel(
             .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
             .drawWithContent {
                 drawContent()
-                drawFadeInRects(rectList)
+                drawFadeInRects(rectList, debug)
             },
         onTextLayout = { textLayout ->
             endIndex = text.lastIndex
@@ -332,108 +318,6 @@ private fun TrailFadeInTextParallelWithChannel(
         },
         text = text,
         style = style
-    )
-}
-
-@Composable
-fun TrailFadeInTextParallelWithChannel2(
-    modifier: Modifier = Modifier,
-    text: String,
-    style: TextStyle = TextStyle.Default,
-    staggerMs: Long = 20L,
-    revealMs: Int = 1000,
-    lingerMs: Long = 80L
-) {
-    // Append-only tracking
-    var lastProcessedExclusive by remember { mutableIntStateOf(0) }
-
-    val activeRects = remember { mutableStateListOf<RectWithAnimation>() }
-
-    val rectBatchChannel =
-        remember { Channel<List<RectWithAnimation>>(capacity = Channel.UNLIMITED) }
-    val jobsById = remember { mutableStateMapOf<String, Job>() }
-
-    // Dispatcher: launches per-rect animations in parallel (with stagger)
-    LaunchedEffect(Unit) {
-        for (batch in rectBatchChannel) {
-            batch.forEachIndexed { index, rectWithAnimation ->
-                if (jobsById.containsKey(rectWithAnimation.id)) return@forEachIndexed
-
-                jobsById[rectWithAnimation.id] = launch {
-                    // Stagger start.
-                    // NOTE: rect is already in activeRects -> it will mask until its progress advances.
-                    delay(staggerMs * index)
-
-                    try {
-                        rectWithAnimation.animatable.animateTo(
-                            targetValue = 1f,
-                            animationSpec = tween(revealMs, easing = LinearEasing)
-                        )
-                        delay(lingerMs)
-                    } finally {
-                        activeRects.remove(rectWithAnimation)
-                        jobsById.remove(rectWithAnimation.id)
-                    }
-                }
-            }
-        }
-    }
-
-    // Cleanup
-    DisposableEffect(Unit) {
-        onDispose {
-            rectBatchChannel.close()
-            jobsById.values.forEach { it.cancel() }
-            jobsById.clear()
-            activeRects.clear()
-        }
-    }
-
-    Text(
-        modifier = modifier
-            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-            .drawWithContent {
-                drawContent()
-                drawFadeInRects(activeRects)
-            },
-        text = text,
-        style = style,
-        onTextLayout = { layout ->
-            val len = layout.layoutInput.text.length
-            val startInclusive = lastProcessedExclusive.coerceIn(0, len)
-            if (startInclusive >= len) return@Text
-
-            val endInclusive = (len - 1).coerceAtLeast(startInclusive)
-
-            val rects = calculateBoundingRectList(
-                textLayoutResult = layout,
-                startIndex = startInclusive,
-                endIndex = endInclusive,
-                segmentation = LineSegmentation.Words()
-            )
-
-            lastProcessedExclusive = len
-            if (rects.isEmpty()) return@Text
-
-            // IDs based on logical range + per-line index (stable)
-            val startLine = layout.getLineForOffset(startInclusive)
-            val endLine = layout.getLineForOffset(endInclusive)
-
-            val batch = rects.mapIndexed { i, rect ->
-                val line = (startLine + i).coerceAtMost(endLine)
-                RectWithAnimation(
-                    id = "range_${startInclusive}_${endInclusive}_line_$line",
-                    startIndex = startInclusive,
-                    endIndex = endInclusive,
-                    rect = rect
-                )
-            }
-
-            activeRects.addAll(batch)
-
-            // Kick animations
-            rectBatchChannel.trySend(batch)
-        }
     )
 }
 
@@ -532,7 +416,10 @@ private fun TrailFadeInTextThatLags(
     )
 }
 
-private fun ContentDrawScope.drawFadeInRects(rectList: List<RectWithAnimation>) {
+private fun ContentDrawScope.drawFadeInRects(
+    rectList: List<RectWithAnimation>,
+    debug: Boolean = false
+) {
     rectList.forEachIndexed { _, rectWithAnimation ->
 
         val progress = rectWithAnimation.animatable.value
@@ -582,11 +469,14 @@ private fun ContentDrawScope.drawFadeInRects(rectList: List<RectWithAnimation>) 
         )
 
         // For Debugging
-//        drawRect(
-//            color = lerp(Color.Red, Color.Green, progress),
-//            topLeft = topLeft,
-//            size = rectSize,
-//            style = Stroke(2.dp.toPx())
-//        )
+        if (debug) {
+            drawRect(
+                color = lerp(Color.Red, Color.Green, progress),
+                topLeft = topLeft,
+                size = rectSize,
+                style = Stroke(2.dp.toPx())
+            )
+        }
+
     }
 }
