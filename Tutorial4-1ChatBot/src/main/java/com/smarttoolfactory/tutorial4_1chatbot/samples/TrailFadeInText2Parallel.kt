@@ -14,7 +14,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -142,15 +141,28 @@ private fun TrailFadeInParallelPreview() {
     }
 }
 
+/**
+ * Text that reveals it content with trail fade-in animation by splitting
+ * new text into `Rect`s and animating them in parallel in same batch.
+ * @param start start index of text
+ * @param end end index of text
+ * @param delayInMillis delay for parallel batches. When new text is added
+ * we get a new batch. To add delay between every animation use delay
+ * @param revealCoefficient duration of reveal for every `Rect` is calculated with
+ * its width times `revealCoefficient`
+ * @param lingerInMillis is the delay after animation is completed for a `Rect` reveal
+ * @param style is the style of text
+ * @param debug can be used for drawing actual rects with lerping from red to green
+ */
 @Composable
 internal fun TrailFadeInText(
     modifier: Modifier = Modifier,
     text: String,
     start: Int = 0,
     end: Int = text.lastIndex,
-    staggerMs: Long = 20L,
-    revealMs: Int = 1000,
-    lingerMs: Long = 80L,
+    delayInMillis: Long = 20L,
+    revealCoefficient: Float = 3f,
+    lingerInMillis: Long = 80L,
     segmentation: LineSegmentation = LineSegmentation.None,
     style: TextStyle = TextStyle.Default,
     debug: Boolean = false
@@ -206,16 +218,18 @@ internal fun TrailFadeInText(
 
                 newList.forEachIndexed { index, rectWithAnimation ->
                     scope.launch {
-                        delay(staggerMs * index)
+                        delay(delayInMillis * index)
+
+                        val duration = (revealCoefficient * rectWithAnimation.rect.width).toInt()
 
                         try {
                             rectWithAnimation.animatable.animateTo(
                                 targetValue = 1f,
-                                animationSpec = tween(revealMs, easing = LinearEasing)
+                                animationSpec = tween(duration, easing = LinearEasing)
                             )
-                            delay(lingerMs)
+                            delay(lingerInMillis)
                         } finally {
-//                            rectList.remove(rectWithAnimation)
+                            rectList.remove(rectWithAnimation)
                             rectWithAnimation.animatable.snapTo(1f)
                         }
                     }
@@ -227,15 +241,28 @@ internal fun TrailFadeInText(
     )
 }
 
+/**
+ * Text that reveals it content with trail fade-in animation by splitting
+ * new text into `Rect`s and animating them in parallel in same batch.
+ * @param start start index of text
+ * @param end end index of text
+ * @param delayInMillis delay for parallel batches. When new text is added
+ * we get a new batch. To add delay between every animation use delay
+ * @param revealCoefficient duration of reveal for every `Rect` is calculated with
+ * its width times `revealCoefficient`
+ * @param lingerInMillis is the delay after animation is completed for a `Rect` reveal
+ * @param style is the style of text
+ * @param debug can be used for drawing actual rects with lerping from red to green
+ */
 @Composable
 internal fun TrailFadeInTextParallelWithChannel(
     modifier: Modifier = Modifier,
     text: String,
     start: Int = 0,
     end: Int = text.lastIndex,
-    staggerMs: Long = 20L,
-    revealMs: Int = 1000,
-    lingerMs: Long = 80L,
+    delayInMillis: Long = 20L,
+    revealCoefficient: Float = 3f,
+    lingerInMillis: Long = 80L,
     segmentation: LineSegmentation = LineSegmentation.None,
     style: TextStyle = TextStyle.Default,
     debug: Boolean = false
@@ -265,14 +292,16 @@ internal fun TrailFadeInTextParallelWithChannel(
 
                 val job = launch {
                     // Optional stagger, keeps parallel but slightly cascaded.
-                    delay(staggerMs * index)
+                    delay(delayInMillis * index)
+//                    val duration = 1000
+                    val duration = (revealCoefficient * rectWithAnimation.rect.width).toInt()
 
                     try {
                         rectWithAnimation.animatable.animateTo(
                             targetValue = 1f,
-                            animationSpec = tween(revealMs, easing = LinearEasing)
+                            animationSpec = tween(duration, easing = LinearEasing)
                         )
-                        delay(lingerMs)
+                        delay(lingerInMillis)
                     } finally {
                         rectList.remove(rectWithAnimation)
                         jobsByRectId.remove(id)
