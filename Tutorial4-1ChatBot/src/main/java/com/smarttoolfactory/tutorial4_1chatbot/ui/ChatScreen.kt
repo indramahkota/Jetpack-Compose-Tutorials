@@ -2,7 +2,10 @@
 
 package com.smarttoolfactory.tutorial4_1chatbot.ui
 
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -38,7 +41,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -94,10 +96,7 @@ val inputBrush = Brush.verticalGradient(
     )
 )
 
-private fun LazyListState.isAtBottomPx(
-    thresholdPx: Int = 6,
-    bottomGap: Int = 0
-): Boolean {
+private fun LazyListState.isAtBottomPx(thresholdPx: Int = 0): Boolean {
     val info = layoutInfo
     val lastVisible = info.visibleItemsInfo.lastOrNull() ?: return false
     val lastIndex = info.totalItemsCount - 1
@@ -105,7 +104,7 @@ private fun LazyListState.isAtBottomPx(
 
     val viewportBottom = info.viewportEndOffset
     val itemSize = lastVisible.size
-    val itemBottom = (lastVisible.offset + itemSize - bottomGap).coerceAtLeast(0)
+    val itemBottom = lastVisible.offset + itemSize
 
     println(
         "LazyListState viewportBottom: $viewportBottom, " +
@@ -160,17 +159,25 @@ fun ChatScreen(
     val messageStatus: MessageStatus? = messages.lastOrNull()?.messageStatus
     var bottomGapDp by remember { mutableStateOf(0.dp) }
 
+    /**
+     * Button for scrolling to bottom of the list when last message is not totally visible
+     */
     val jumpToBottomButtonEnabled by remember {
         derivedStateOf {
             messages.isNotEmpty() &&
-                    listState.isAtBottomPx(
-                        thresholdPx = 100,
-                        bottomGap = with(density) { bottomGapDp.roundToPx() }
-                    ).not() &&
+                    listState.isAtBottomPx().not() &&
                     isKeyboardOpen.not() &&
                     listState.isScrollInProgress.not()
         }
     }
+
+    /**
+     * padding for first user message to animate it from bottom
+     */
+    val initialItemPadding by animateDpAsState(
+        targetValue = if (messages.size <= 1) 1000.dp else 0.dp,
+        animationSpec = tween(1000)
+    )
 
     // On start open keyboard on next frame
     LaunchedEffect(Unit) {
@@ -217,7 +224,7 @@ fun ChatScreen(
                 itemsIndexed(
                     items = messages,
                     contentType = { _: Int, message: Message ->
-                        message.messageStatus
+                        message.role
                     },
                     key = { _: Int, message: Message ->
                         message.uiKey
@@ -227,7 +234,9 @@ fun ChatScreen(
                         messages.lastIndex == index
                     ) {
                         Modifier.heightIn(bottomGapDp - contentPaddingBottom - itemSpacing)
-//                            .border(2.dp, Color.Magenta)
+                            .border(2.dp, Color.Magenta)
+                    } else if (index == 0 && messages.size <= 2) {
+                        Modifier.padding(top = initialItemPadding).border(2.dp, Color.Black)
                     } else {
                         Modifier
 //                            .border(2.dp, Color.Blue)
@@ -330,16 +339,9 @@ private fun HandleScrollState(
 
     var autoScrollEnabled by remember { mutableStateOf(true) }
 
-    var bottomGapPx by remember {
-        mutableIntStateOf(0)
-    }
-
     val isAtBottom by remember {
         derivedStateOf {
-            listState.isAtBottomPx(
-                thresholdPx = 100,
-                bottomGap = bottomGapPx
-            )
+            listState.isAtBottomPx()
         }
     }
 
@@ -419,20 +421,22 @@ private fun HandleScrollState(
             val total = info.totalItemsCount
             val viewportEndOffset = info.viewportEndOffset
 
-            if (total >= 2) {
-                val lastIndex = total - 2
 
-                val lastItem: LazyListItemInfo? = visibleItemsInfo.firstOrNull {
-                    it.index == lastIndex
+            visibleItemsInfo.forEach { item: LazyListItemInfo ->
+                println("index: ${item.index}, size: ${item.size}, ${item.contentType}")
+            }
+            if (total >= 2) {
+                val lastIndexOfUserMessage = total - 2
+
+                val lastUserMessageItem: LazyListItemInfo? = visibleItemsInfo.firstOrNull {
+                    it.index == lastIndexOfUserMessage
                 }
 
-                if (lastItem != null) {
-                    val lastBottom = lastItem.size
+                if (lastUserMessageItem != null) {
+                    val lastBottom = lastUserMessageItem.size
                     val gap = viewportEndOffset - lastBottom
 
                     val finalGap = max(0, gap)
-
-                    bottomGapPx = finalGap
 
                     val bottomGapDp = with(density) {
                         finalGap.toDp()
@@ -443,11 +447,11 @@ private fun HandleScrollState(
                     if (!isScrollCompleted) {
                         println(
                             "FIRST Scroll $messageStatus, " +
-                                    "lastIndex: $lastIndex, " +
+                                    "lastIndex: $lastIndexOfUserMessage, " +
                                     "lastBottom: $lastBottom"
                         )
                         try {
-                            listState.animateScrollToItem(lastIndex)
+                            listState.animateScrollToItem(lastIndexOfUserMessage)
                             isScrollCompleted = true
                             println("FIRST Scroll Completed $messageStatus")
                         } catch (e: CancellationException) {
@@ -459,7 +463,7 @@ private fun HandleScrollState(
                     // If new prompt is outside of lazy column, first push it to bottom of LazyColumn
                     // for it to be visible to start measuring space needed to push it to top
                     println("invoke pre-scroll")
-                    listState.animateScrollToItem(lastIndex)
+                    listState.animateScrollToItem(lastIndexOfUserMessage)
                 }
             }
         }
