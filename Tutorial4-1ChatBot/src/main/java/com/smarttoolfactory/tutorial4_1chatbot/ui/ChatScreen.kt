@@ -106,11 +106,11 @@ private fun LazyListState.isAtBottomPx(thresholdPx: Int = 0): Boolean {
     val itemSize = lastVisible.size
     val itemBottom = lastVisible.offset + itemSize
 
-    println(
-        "LazyListState viewportBottom: $viewportBottom, " +
-                "item size: ${lastVisible.size}, " +
-                "itemBottom: $itemBottom"
-    )
+//    println(
+//        "LazyListState viewportBottom: $viewportBottom, " +
+//                "item size: ${lastVisible.size}, " +
+//                "itemBottom: $itemBottom"
+//    )
 
     return itemBottom - viewportBottom <= thresholdPx
 }
@@ -179,13 +179,20 @@ fun ChatScreen(
         animationSpec = tween(1000)
     )
 
+    /**
+     * Check if user manually scrolls to bottom to initiate auto-scroll when streaming
+     * Do not start auto-scrolling before user scrolls to bottom with gesture or by pressing
+     * jump to bottom button
+     */
+    var pinnedToBottom by remember {
+        mutableStateOf(false)
+    }
+
     // On start open keyboard on next frame
     LaunchedEffect(Unit) {
         awaitFrame()
         focusRequester.requestFocus()
     }
-
-
 
     Box(
         modifier = Modifier
@@ -282,6 +289,7 @@ fun ChatScreen(
                 modifier = Modifier.align(Alignment.End),
                 enabled = jumpToBottomButtonEnabled,
                 onClick = {
+                    pinnedToBottom = true
                     coroutineScope.launch {
                         listState.scrollToItem(
                             index = messages.lastIndex,
@@ -319,6 +327,10 @@ fun ChatScreen(
             listState = listState,
             messages = messages,
             messageStatus = messageStatus,
+            pinnedToBottom = pinnedToBottom,
+            onPinnedToBottomChange = {
+                pinnedToBottom = it
+            },
             onBottomGapCalculated = {
                 bottomGapDp = it
             }
@@ -331,13 +343,13 @@ private fun HandleScrollState(
     listState: LazyListState,
     messageStatus: MessageStatus?,
     messages: List<Message>,
+    pinnedToBottom: Boolean,
+    onPinnedToBottomChange: (Boolean) -> Unit,
     onBottomGapCalculated: (Dp) -> Unit
 ) {
     val density = LocalDensity.current
 
     val isKeyboardOpen by rememberKeyboardState()
-
-    var autoScrollEnabled by remember { mutableStateOf(true) }
 
     val isAtBottom by remember {
         derivedStateOf {
@@ -356,38 +368,57 @@ private fun HandleScrollState(
         fontSize = 16.sp,
         color = Color.Red,
         text = "STATUS: $messageStatus\n" +
-                "index: ${messages.lastIndex}\n" +
+                "isUserManuallyScrolled: $pinnedToBottom\n" +
                 "isAtBottom: $isAtBottom\n" +
-                "autoScroll: $autoScrollEnabled\n" +
+//                "autoScroll: $autoScrollEnabled\n" +
                 "isScrollInProgress: ${listState.isScrollInProgress}"
     )
 
     // If user scrolls while away from bottom, treat as reading history
-    LaunchedEffect(Unit) {
-        snapshotFlow { isAtBottom to listState.isScrollInProgress }
-            .distinctUntilChanged()
-            .collect { (atBottom, inProgress) ->
-                autoScrollEnabled = if (inProgress) {
-                    false
-                } else if (atBottom) {
-                    true
-                } else {
-                    false
-                }
+//    LaunchedEffect(Unit) {
+//        snapshotFlow { isAtBottom to listState.isScrollInProgress }
+//            .distinctUntilChanged()
+//            .collect { (atBottom, inProgress) ->
+//                autoScrollEnabled =
+//                    if (pinnedToBottom) {
+//                        true
+//                    } else if (inProgress) {
+//                        false
+//                    } else if (atBottom) {
+//                        true
+//                    } else {
+//                        false
+//                    }
+//            }
+//    }
+
+    // Check if user scrolled to bottom while stream is going to enable auto-scrolling
+
+    LaunchedEffect(messageStatus) {
+        onPinnedToBottomChange(false)
+
+        if (messageStatus == MessageStatus.Streaming) {
+
+            snapshotFlow {
+                listState.layoutInfo.visibleItemsInfo
             }
+                .collect {
+                    if (listState.isScrollInProgress) {
+                        println("Change pinned to bottom SCROLLING $isAtBottom")
+                        onPinnedToBottomChange(isAtBottom)
+                    }
+                }
+        }
     }
 
     // If streaming and at the bottom while keyboard is not open and user is not scrolling
     // scroll to bottom and recollect after tick to check again
-    LaunchedEffect(messageStatus) {
+    LaunchedEffect(messageStatus, pinnedToBottom) {
         if (messageStatus == MessageStatus.Streaming) {
-            snapshotFlow {
-                autoScrollEnabled &&
-                        isAtBottom &&
-                        !listState.isScrollInProgress
-            }
+            snapshotFlow { isAtBottom && pinnedToBottom }
                 .distinctUntilChanged()
                 .flatMapLatest { shouldPin ->
+                    println("Should pin: $shouldPin")
                     if (shouldPin) tickerFlow(120) else emptyFlow()
                 }
                 .collect {
@@ -421,10 +452,6 @@ private fun HandleScrollState(
             val total = info.totalItemsCount
             val viewportEndOffset = info.viewportEndOffset
 
-
-            visibleItemsInfo.forEach { item: LazyListItemInfo ->
-                println("index: ${item.index}, size: ${item.size}, ${item.contentType}")
-            }
             if (total >= 2) {
                 val lastIndexOfUserMessage = total - 2
 
@@ -475,7 +502,10 @@ private fun HandleScrollState(
         if (
             messageStatus == MessageStatus.Completed || messageStatus == MessageStatus.Failed) {
             awaitFrame()
-            if (isAtBottom && autoScrollEnabled) {
+            if (
+                isAtBottom
+//                && autoScrollEnabled
+            ) {
                 listState.scrollToItem(messages.lastIndex, Int.MAX_VALUE)
             }
         }
