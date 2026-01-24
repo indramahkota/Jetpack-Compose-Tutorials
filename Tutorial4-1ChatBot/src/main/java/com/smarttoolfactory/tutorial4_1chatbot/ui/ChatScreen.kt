@@ -106,13 +106,61 @@ private fun LazyListState.isAtBottomPx(thresholdPx: Int = 0): Boolean {
     val itemSize = lastVisible.size
     val itemBottom = lastVisible.offset + itemSize
 
-//    println(
-//        "LazyListState viewportBottom: $viewportBottom, " +
-//                "item size: ${lastVisible.size}, " +
-//                "itemBottom: $itemBottom"
-//    )
+    println(
+        "LazyListState viewportBottom: $viewportBottom, " +
+                "item size: ${lastVisible.size}, " +
+                "itemBottom: $itemBottom"
+    )
 
     return itemBottom - viewportBottom <= thresholdPx
+}
+
+private suspend fun LazyListState.scrollToBottomOfIndex(
+    index: Int,
+    offsetFromBottom: Int = 0,
+    animate: Boolean = true
+) {
+    scrollToItem(index)
+    awaitFrame()
+
+    val info = layoutInfo
+    val lastVisible = info.visibleItemsInfo.lastOrNull()
+    val lastVisibleIndex = info.visibleItemsInfo.lastOrNull()?.index
+    val lastMessageIndex = info.totalItemsCount - 1
+
+    println("last lastMessageIndex: $lastMessageIndex, lastVisible: $lastVisibleIndex")
+
+    val offset: Int = lastVisible?.let { lastItem ->
+        if (lastItem.index == lastMessageIndex) {
+            val viewportBottom = info.viewportEndOffset
+            val itemSize = lastVisible.size
+            val itemBottom = lastVisible.offset + itemSize
+
+            val offset =
+                (itemBottom - viewportBottom + offsetFromBottom).coerceAtLeast(
+                    0
+                )
+
+            println(
+                "itemBottom: $itemBottom," +
+                        " itemSize: $itemSize" +
+                        "viewportBottom: $viewportBottom, " +
+                        "Offset: $offset"
+            )
+
+            offset
+        } else {
+            0
+        }
+
+    } ?: 0
+    if (offset > 0) {
+        if (animate) {
+            animateScrollToItem(index = index, scrollOffset = offset)
+        } else {
+            scrollToItem(index = index, scrollOffset = offset)
+        }
+    }
 }
 
 /**
@@ -176,7 +224,7 @@ fun ChatScreen(
      */
     val initialItemPadding by animateDpAsState(
         targetValue = if (messages.size <= 1) 1000.dp else 0.dp,
-        animationSpec = tween(1000)
+        animationSpec = tween(900)
     )
 
     /**
@@ -290,10 +338,14 @@ fun ChatScreen(
                 enabled = jumpToBottomButtonEnabled,
                 onClick = {
                     pinnedToBottom = true
+                    val bottomGapToInputArea = with(density) {
+                        (contentPaddingBottom + itemSpacing).roundToPx()
+                    }
+
                     coroutineScope.launch {
-                        listState.scrollToItem(
+                        listState.scrollToBottomOfIndex(
                             index = messages.lastIndex,
-                            scrollOffset = Int.MAX_VALUE
+                            offsetFromBottom = bottomGapToInputArea
                         )
                     }
                 }
@@ -425,7 +477,7 @@ private fun HandleScrollState(
                     if (messages.isNotEmpty()) {
                         println("ChatScreen Auto scrolling...")
                         try {
-                            listState.scrollToItem(messages.lastIndex, Int.MAX_VALUE)
+                            listState.requestScrollToItem(messages.lastIndex, Int.MAX_VALUE)
                         } catch (e: CancellationException) {
                             println("ChatScreen FLOW exception ${e.message}")
                         }
@@ -480,8 +532,12 @@ private fun HandleScrollState(
                         try {
                             listState.animateScrollToItem(lastIndexOfUserMessage)
                             isScrollCompleted = true
-                            println("FIRST Scroll Completed $messageStatus")
+                            println(
+                                "FIRST Scroll Completed $messageStatus, " +
+                                        "isScrollCompleted: $isScrollCompleted"
+                            )
                         } catch (e: CancellationException) {
+                            listState.requestScrollToItem(lastIndexOfUserMessage)
                             println("FIRST Scroll failed ${e.message}")
                         }
                     }

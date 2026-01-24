@@ -5,15 +5,18 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListItemInfo
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -35,7 +38,6 @@ import androidx.compose.ui.unit.dp
 import com.halilibo.richtext.commonmark.Markdown
 import com.halilibo.richtext.ui.BasicRichText
 import kotlinx.coroutines.launch
-import kotlin.collections.forEach
 
 @Preview
 @Composable
@@ -198,6 +200,105 @@ fun LazyColumnMarkdownRecompositionTest() {
             }
         ) {
             Text("Add message")
+        }
+
+    }
+}
+
+@Preview
+@Composable
+fun LazyColumnScrollPreview() {
+
+    Column(
+        modifier = Modifier.fillMaxSize().systemBarsPadding().padding(16.dp)
+    ) {
+
+        var text by remember {
+            mutableStateOf("")
+        }
+
+        val scope = rememberCoroutineScope()
+
+        val listState = rememberLazyListState()
+
+        val density = LocalDensity.current
+
+        val height = with(density) {
+            100.toDp()
+        }
+        val height2 = with(density) {
+            3000.toDp()
+        }
+
+        var index by remember {
+            mutableIntStateOf(0)
+        }
+
+        var offset by remember {
+            mutableIntStateOf(Int.MAX_VALUE)
+        }
+
+        LaunchedEffect(listState) {
+            snapshotFlow {
+                listState.layoutInfo.visibleItemsInfo
+            }.collect { lazyListItemInfos: List<LazyListItemInfo> ->
+                val viewportEndOffset = listState.layoutInfo.viewportEndOffset
+                val height = listState.layoutInfo.viewportSize.height
+
+                text = "viewportEndOffset: $viewportEndOffset, height:$height\n"
+                lazyListItemInfos.forEach { item: LazyListItemInfo ->
+                    text += "i: ${item.index}, s: ${item.size}, offset: ${item.offset}\n"
+                }
+            }
+        }
+
+
+        OutlinedTextField(
+            modifier = Modifier.fillMaxWidth(),
+            value = index.toString(),
+            onValueChange = {
+                it.toIntOrNull()?.let { newIndex ->
+                    index = newIndex
+                }
+            }
+        )
+
+        OutlinedTextField(
+            modifier = Modifier.fillMaxWidth(),
+            value = offset.toString(),
+            onValueChange = {
+                it.toIntOrNull()?.let { newOffset ->
+                    offset = newOffset
+                }
+            }
+        )
+
+        Button(
+            onClick = {
+                scope.launch {
+                    listState.animateScrollToItem(index, offset)
+                }
+            }
+        ) {
+            Text("Scroll to index: $index, offset: $offset")
+        }
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize()
+        ) {
+
+            items(4) {
+
+                val height = if (it % 2 == 0) height else height2
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(2.dp, Color.Red)
+                        .height(height)
+                ) {
+                    Text("Index: $it")
+                }
+            }
         }
 
     }
