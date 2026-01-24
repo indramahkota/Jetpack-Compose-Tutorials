@@ -71,6 +71,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlin.math.max
 
@@ -460,6 +461,25 @@ private fun HandleScrollState(
                         onPinnedToBottomChange(isAtBottom)
                     }
                 }
+        } else if (
+            messageStatus == MessageStatus.Completed ||
+            messageStatus == MessageStatus.Failed ||
+            messageStatus == MessageStatus.Cancelled
+        ) {
+            snapshotFlow {
+                listState.layoutInfo.visibleItemsInfo
+            }
+                .map { visibleItemsInfo ->
+                    val lastItemIndex = listState.layoutInfo.totalItemsCount - 1
+                    val lastVisibleItemIndex = visibleItemsInfo.lastOrNull()?.index
+
+                    lastItemIndex != lastVisibleItemIndex
+                }
+                .collect { resetBottomGap ->
+                    if (resetBottomGap) {
+                        onBottomGapCalculated(0.dp)
+                    }
+                }
         }
     }
 
@@ -512,8 +532,8 @@ private fun HandleScrollState(
                 }
 
                 if (lastUserMessageItem != null) {
-                    val lastBottom = lastUserMessageItem.size
-                    val gap = viewportEndOffset - lastBottom
+                    val lastUserMessageBottom = lastUserMessageItem.size
+                    val gap = viewportEndOffset - lastUserMessageBottom
 
                     val finalGap = max(0, gap)
 
@@ -527,7 +547,7 @@ private fun HandleScrollState(
                         println(
                             "FIRST Scroll $messageStatus, " +
                                     "lastIndex: $lastIndexOfUserMessage, " +
-                                    "lastBottom: $lastBottom"
+                                    "lastBottom: $lastUserMessageBottom"
                         )
                         try {
                             listState.animateScrollToItem(lastIndexOfUserMessage)
@@ -556,12 +576,12 @@ private fun HandleScrollState(
     // to bottom of last message to be fully be visible if user is already at the bottom
     LaunchedEffect(messageStatus) {
         if (
-            messageStatus == MessageStatus.Completed || messageStatus == MessageStatus.Failed) {
+            messageStatus == MessageStatus.Completed ||
+            messageStatus == MessageStatus.Failed ||
+            messageStatus == MessageStatus.Cancelled
+        ) {
             awaitFrame()
-            if (
-                isAtBottom
-//                && autoScrollEnabled
-            ) {
+            if (isAtBottom) {
                 listState.scrollToItem(messages.lastIndex, Int.MAX_VALUE)
             }
         }
