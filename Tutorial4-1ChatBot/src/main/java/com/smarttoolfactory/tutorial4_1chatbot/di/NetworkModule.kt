@@ -41,9 +41,9 @@ object NetworkModule {
         interceptor: OpenAiInterceptor
     ): OkHttpClient =
         OkHttpClient.Builder()
-            .addInterceptor(ChuckerInterceptor(context))
+//            .addInterceptor(ChuckerInterceptor(context))
             .addInterceptor(interceptor)
-            .readTimeout(0, TimeUnit.MILLISECONDS) // SSE safe
+            .readTimeout(0, TimeUnit.MILLISECONDS)
             .build()
 }
 
