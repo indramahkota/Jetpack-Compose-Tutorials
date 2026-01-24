@@ -259,7 +259,7 @@ fun MarkdownCustomComposerPreview() {
 }
 
 @Composable
-private fun RichTextScope.CustomTable(
+internal fun RichTextScope.CustomTable(
     modifier: Modifier = Modifier,
     tableRoot: AstNode,
     cellPadding: Dp = 0.dp,

@@ -8,7 +8,6 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.halilibo.richtext.commonmark.CommonmarkAstNodeParser
@@ -34,7 +33,6 @@ import com.halilibo.richtext.ui.string.InlineContent
 import com.halilibo.richtext.ui.string.RichTextString
 import com.halilibo.richtext.ui.string.Text
 import com.halilibo.richtext.ui.string.withFormat
-import com.smarttoolfactory.tutorial4_1chatbot.samples.MarkdownRichText
 
 @Composable
 private fun CustomComposer(
@@ -99,14 +97,11 @@ internal fun RichTextScope.MarkdownRichText(astNode: AstNode, modifier: Modifier
 
     Text(
         text = richText,
-        modifier = modifier,
-        onTextLayout = { textLayoutResult: TextLayoutResult ->
-
-        }
+        modifier = modifier
     )
 }
 
-private fun computeRichTextString(astNode: AstNode): RichTextString {
+internal fun computeRichTextString(astNode: AstNode): RichTextString {
     val richTextStringBuilder = RichTextString.Builder()
 
     // Modified pre-order traversal with pushFormat, popFormat support.

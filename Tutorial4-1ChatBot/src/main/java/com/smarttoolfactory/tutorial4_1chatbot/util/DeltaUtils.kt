@@ -12,11 +12,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.smarttoolfactory.tutorial4_1chatbot.samples.TrailFadeInText
+import com.halilibo.richtext.ui.BasicRichText
+import com.halilibo.richtext.ui.RichTextStyle
+import com.smarttoolfactory.tutorial4_1chatbot.markdown.MarkdownComposer
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -112,18 +112,21 @@ fun MarkdownTokenStreamPreview() {
         rendered = ""
 
         deltas
-//            .deltasToMarkdownTokensWithDelay(
-//                delayMillis = 120L,
-//                flushRemainderOnComplete = true,
-//                maxCompletedWordsPerFlush = 4,
-//                maxCompletedMarkdownSpansPerFlush = 3
-//            )
+//                .deltasToMarkdownTokensWithDelay2(
+//                    delayMillis = 30L
+//                )
             .deltasToMarkdownTokensWithDelay(
-                delayMillis = 60
+                delayMillis = 60L,
+                flushRemainderOnComplete = true,
+                maxCompletedWordsPerFlush = 3,
+                maxCompletedMarkdownSpansPerFlush = 3
             )
+//            .deltasToMarkdownTokensWithDelay(
+//                delayMillis = 60
+//            )
 
             .collect {
-                println("Text: $it")
+//                println("Text: $it")
                 rendered += it
             }
     }
@@ -135,17 +138,204 @@ fun MarkdownTokenStreamPreview() {
             .padding(16.dp)
     ) {
 
-        TrailFadeInText(
-            text = rendered,
-            debug = true,
-            style = TextStyle.Default.copy(fontSize = 18.sp)
-        )
+
+        BasicRichText(
+            modifier = Modifier.padding(vertical = 16.dp),
+            style = RichTextStyle.Default
+        ) {
+            MarkdownComposer(markdown = rendered)
+        }
+
 //        BasicRichText(
 //            modifier = Modifier.padding(vertical = 16.dp),
 //            style = RichTextStyle.Default
 //        ) {
 //            Markdown(rendered)
 //        }
+    }
+}
+
+fun Flow<String>.deltasToMarkdownTokensWithDelay2(
+    delayMillis: Long = 16L,
+    flushRemainderOnComplete: Boolean = true
+): Flow<String> = flow {
+    val sb = StringBuilder()
+
+    // Tokens that can form "paired spans" (must close before we emit the opener)
+    val pairedSpans = listOf("```", "**", "__", "~~", "`")
+
+    // Other specials we can emit immediately (structure/whitespace/punct)
+    val specials = listOf(
+        "#######", "######", "#####", "####", "###", "##", "#",
+        "\n", "\t", " ",
+        ">", "-", "*", "+",
+        "|",
+        "[", "]", "(", ")",
+        "!"
+    )
+
+    fun StringBuilder.startsWithToken(token: String): Boolean {
+        if (length < token.length) return false
+        for (i in token.indices) if (this[i] != token[i]) return false
+        return true
+    }
+
+    fun StringBuilder.indexOfToken(token: String, start: Int): Int {
+        if (token.isEmpty() || start < 0) return -1
+        val lastStart = length - token.length
+        for (i in start..lastStart) {
+            var ok = true
+            for (k in token.indices) {
+                if (this[i + k] != token[k]) {
+                    ok = false; break
+                }
+            }
+            if (ok) return i
+        }
+        return -1
+    }
+
+    /**
+     * 1) If buffer starts with a paired span token, only emit when we have the closing token too.
+     *    Emit the entire completed span as ONE token, e.g. "**hello**", "`code`", "```...\n```".
+     */
+    fun StringBuilder.consumeCompletedSpanOrNull(): String? {
+        val opener = pairedSpans.firstOrNull { startsWithToken(it) } ?: return null
+        val closeAt = indexOfToken(opener, start = opener.length)
+        if (closeAt < 0) return null // wait for closing delimiter
+
+        val endExclusive = closeAt + opener.length
+        val span = substring(0, endExclusive)
+        delete(0, endExclusive)
+        return span
+    }
+
+    /**
+     * 2) Emit non-span specials immediately (headings markers, whitespace, list markers, etc.)
+     *    Note: we intentionally do NOT include "**", "__", "~~", "`", "```" here.
+     */
+    fun StringBuilder.consumeImmediateSpecialOrNull(): String? {
+        for (t in specials) {
+            if (startsWithToken(t)) {
+                delete(0, t.length)
+                return t
+            }
+        }
+        return null
+    }
+
+    fun StringBuilder.indexOfAnySpecialStart(allSpecials: List<String>): Int {
+        if (isEmpty()) return -1
+        for (i in 0 until length) {
+            for (token in allSpecials) {
+                if (i + token.length > length) continue
+                var ok = true
+                for (k in token.indices) {
+                    if (this[i + k] != token[k]) {
+                        ok = false; break
+                    }
+                }
+                if (ok) return i
+            }
+        }
+        return -1
+    }
+
+    fun StringBuilder.longestSuffixThatIsPrefixOfAnyToken(tokens: List<String>): Int {
+        if (isEmpty()) return 0
+        val maxTokenLen = tokens.maxOf { it.length }
+        val maxCheck = minOf(length, maxTokenLen - 1)
+        var keep = 0
+
+        for (suffixLen in 1..maxCheck) {
+            val start = length - suffixLen
+            var isPrefix = false
+            for (t in tokens) {
+                if (t.length <= suffixLen) continue
+                var ok = true
+                for (k in 0 until suffixLen) {
+                    if (this[start + k] != t[k]) {
+                        ok = false; break
+                    }
+                }
+                if (ok) {
+                    isPrefix = true; break
+                }
+            }
+            if (isPrefix) keep = suffixLen
+        }
+        return keep
+    }
+
+    /**
+     * 3) Emit plain text runs. Do not get stuck when there is no boundary;
+     *    emit safe text, keep only a suffix that might become a special token.
+     */
+    fun StringBuilder.consumeTextRunOrNull(): String? {
+        if (isEmpty()) return null
+
+        // If buffer begins with a span opener or an immediate special, don't consume text.
+        if (pairedSpans.any { startsWithToken(it) }) return null
+        if (specials.any { startsWithToken(it) }) return null
+
+        // Boundaries include BOTH span openers and immediate specials.
+        val allBoundaries = pairedSpans + specials
+        val boundary = indexOfAnySpecialStart(allBoundaries)
+
+        return if (boundary >= 0) {
+            if (boundary == 0) null
+            else substring(0, boundary).also { delete(0, boundary) }
+        } else {
+            // No complete boundary exists: emit safe prefix, keep possible partial-special suffix
+            val keep = longestSuffixThatIsPrefixOfAnyToken(allBoundaries)
+            val emitLen = length - keep
+            if (emitLen <= 0) null
+            else substring(0, emitLen).also { delete(0, emitLen) }
+        }
+    }
+
+    suspend fun emitToken(token: String) {
+        val out = when (token) {
+            " ", "\t" -> " "
+            else -> token
+        }
+        emit(out)
+        delay(delayMillis)
+    }
+
+    collect { delta ->
+        if (delta.isEmpty()) return@collect
+        sb.append(delta.replace("\r\n", "\n").replace("\r", "\n"))
+
+        while (true) {
+            // A) Completed paired spans first (emit **hello** as one token)
+            val span = sb.consumeCompletedSpanOrNull()
+            if (span != null) {
+                emitToken(span)
+                continue
+            }
+
+            // B) Immediate specials (headings markers, whitespace, etc.)
+            val special = sb.consumeImmediateSpecialOrNull()
+            if (special != null) {
+                emitToken(special)
+                continue
+            }
+
+            // C) Plain text run
+            val run = sb.consumeTextRunOrNull()
+            if (run != null) {
+                emitToken(run)
+                continue
+            }
+
+            break
+        }
+    }
+
+    if (flushRemainderOnComplete && sb.isNotEmpty()) {
+        emit(sb.toString())
+        delay(delayMillis)
     }
 }
 
@@ -269,7 +459,6 @@ fun Flow<String>.deltasToMarkdownTokensWithDelay(
         delay(delayMillis)
     }
 }
-
 
 /**
  * Stream text in Markdown-safe chunks:
