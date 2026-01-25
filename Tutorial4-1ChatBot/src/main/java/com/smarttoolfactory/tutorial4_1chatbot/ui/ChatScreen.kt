@@ -397,9 +397,8 @@ fun ChatScreen(
             )
         }
 
-        HandleScrollState(
+        UpdateScrollState(
             listState = listState,
-            messages = messages,
             messageStatus = messageStatus,
             autoScrollToBottom = autoScrollToBottom,
             onAutoScrollToBottomChange = {
@@ -418,7 +417,6 @@ fun ChatScreen(
  * stream is terminated via completed, failed or canceled
  * @param listState state of LazyColumn to get visible item information
  * @param messageStatus status of ui based on stream state
- * @param messages number of messages // TODO remove this and user fom visible item info
  * @param autoScrollStartThreshold bottom spacing to start auto-scrolling if other conditions are met. If bottom of streaming assistant message is
  * above this value threshold for auto-scroll is passed. This can be set as bottom or top of input area. Default value is bottom of input area.
  * If last message's bottom is above bottom of input it's set to true
@@ -430,7 +428,6 @@ fun ChatScreen(
 @Composable
 private fun HandleScrollState(
     listState: LazyListState,
-    messages: List<Message>,
     messageStatus: MessageStatus?,
     autoScrollStartThreshold: Dp,
     autoScrollToBottom: Boolean,
@@ -517,10 +514,12 @@ private fun HandleScrollState(
                     if (shouldPin) tickerFlow(120) else emptyFlow()
                 }
                 .collect {
-                    if (messages.isNotEmpty()) {
+                    val total = listState.layoutInfo.totalItemsCount
+                    val lastIndex = total - 1
+                    if (total > 0) {
                         println("ChatScreen Auto scrolling...")
                         try {
-                            listState.requestScrollToItem(messages.lastIndex, Int.MAX_VALUE)
+                            listState.requestScrollToItem(lastIndex, Int.MAX_VALUE)
                         } catch (e: CancellationException) {
                             println("ChatScreen FLOW exception ${e.message}")
                         }
@@ -604,8 +603,10 @@ private fun HandleScrollState(
             messageStatus == MessageStatus.Cancelled
         ) {
             awaitFrame()
-            if (isAboveBottom) {
-                listState.scrollToItem(messages.lastIndex, Int.MAX_VALUE)
+            val lastIndex = listState.layoutInfo.totalItemsCount - 1
+
+            if (isAboveBottom && lastIndex >= 0) {
+                listState.scrollToItem(lastIndex, Int.MAX_VALUE)
             }
         }
     }
@@ -616,7 +617,6 @@ private fun HandleScrollState(
  * stream is terminated via completed, failed or canceled
  * @param listState state of LazyColumn to get visible item information
  * @param messageStatus status of ui based on stream state
- * @param messages number of messages // TODO remove this and user fom visible item info
  * @param autoScrollStartThreshold bottom spacing to start auto-scrolling if other conditions are met. If bottom of streaming assistant message is
  * above this value threshold for auto-scroll is passed. This can be set as bottom or top of input area. Default value is bottom of input area.
  * If last message's bottom is above bottom of input it's set to true
@@ -628,7 +628,6 @@ private fun HandleScrollState(
 @Composable
 private fun UpdateScrollState(
     listState: LazyListState,
-    messages: List<Message>,
     messageStatus: MessageStatus?,
     autoScrollStartThreshold: Dp,
     autoScrollToBottom: Boolean,
@@ -648,7 +647,6 @@ private fun UpdateScrollState(
         }
     }
 
-    // Debug UI (unchanged)
     Text(
         modifier = Modifier
             .padding(start = 190.dp)
@@ -661,7 +659,7 @@ private fun UpdateScrollState(
                 "isScrollInProgress: ${listState.isScrollInProgress}"
     )
 
-    // Reset pin whenever status changes (matches your current behavior)
+    // Reset pin whenever status changes
     LaunchedEffect(messageStatus) {
         onAutoScrollToBottomChange(false)
     }
@@ -751,10 +749,9 @@ private fun UpdateScrollState(
 
                     // final bottom align if user is already at bottom
                     awaitFrame()
-                    if (messages.isNotEmpty() && isAboveBottom) {
-                        listState.scrollToItem(messages.lastIndex, Int.MAX_VALUE)
+                    if (total > 0 && isAboveBottom) {
+                        listState.scrollToItem(lastIndex, Int.MAX_VALUE)
                     }
-
                     completionHandled = true
                 }
             }
@@ -773,9 +770,12 @@ private fun UpdateScrollState(
                 if (shouldPin) tickerFlow(120) else emptyFlow()
             }
             .collect {
-                if (messages.isNotEmpty()) {
+
+                val total = listState.layoutInfo.totalItemsCount
+                val lastIndex = total - 1
+                if (total > 0) {
                     try {
-                        listState.requestScrollToItem(messages.lastIndex, Int.MAX_VALUE)
+                        listState.requestScrollToItem(lastIndex, Int.MAX_VALUE)
                     } catch (e: CancellationException) {
                         println("😱 requestScrollToItem failed: ${e.message}")
                     }
