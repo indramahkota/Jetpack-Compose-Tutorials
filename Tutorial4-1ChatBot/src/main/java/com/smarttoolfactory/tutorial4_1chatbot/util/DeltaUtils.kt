@@ -14,6 +14,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.halilibo.richtext.commonmark.Markdown
 import com.halilibo.richtext.ui.BasicRichText
 import com.halilibo.richtext.ui.RichTextStyle
 import com.smarttoolfactory.tutorial4_1chatbot.markdown.MarkdownComposer
@@ -112,21 +113,14 @@ fun MarkdownTokenStreamPreview() {
         rendered = ""
 
         deltas
-//                .deltasToMarkdownTokensWithDelay2(
-//                    delayMillis = 30L
-//                )
-            .deltasToMarkdownTokensWithDelay(
-                delayMillis = 60L,
-                flushRemainderOnComplete = true,
-                maxCompletedWordsPerFlush = 3,
-                maxCompletedMarkdownSpansPerFlush = 3
+            .deltasToWordStableMarkdownTokensWithDelay(
+                delayMillis = 60
             )
 //            .deltasToMarkdownTokensWithDelay(
 //                delayMillis = 60
 //            )
-
             .collect {
-//                println("Text: $it")
+                println("Text: $it")
                 rendered += it
             }
     }
@@ -137,7 +131,6 @@ fun MarkdownTokenStreamPreview() {
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
-
 
         BasicRichText(
             modifier = Modifier.padding(vertical = 16.dp),
@@ -155,24 +148,51 @@ fun MarkdownTokenStreamPreview() {
     }
 }
 
-fun Flow<String>.deltasToMarkdownTokensWithDelay2(
+/**
+ * Stream as WORD-STABLE tokens for trail-rect animations.
+ *
+ * Guarantees:
+ * - Emits full "word + optional single space" tokens (outside of markdown spans).
+ * - Emits completed markdown spans as ONE atomic token:
+ *      **...**, __...__, ~~...~~, `...`
+ * - Newlines are emitted as their own token.
+ *
+ * Design goal:
+ * - Prevent reflow surprises for rectangle-based animations by NOT emitting words that might later
+ *   become bold/italic/code due to an unfinished opening delimiter upstream.
+ */
+fun Flow<String>.deltasToWordStableMarkdownTokensWithDelay(
     delayMillis: Long = 16L,
-    flushRemainderOnComplete: Boolean = true
+    flushRemainderOnComplete: Boolean = true,
+    normalizeSpaces: Boolean = true,
+    // Attach one trailing space to the previous word token to reduce token count/recomposition
+    attachSingleTrailingSpace: Boolean = true,
+    // If true, keep triple fences as STRICT blocks (buffer until closing ```), otherwise treat ``` literally.
+    strictTripleBackticks: Boolean = true,
+    // Budget: max number of emitted word tokens per incoming delta flush.
+    maxWordTokensPerFlush: Int = Int.MAX_VALUE,
+    // Budget: max number of emitted completed spans per incoming delta flush.
+    maxSpansPerFlush: Int = Int.MAX_VALUE,
 ): Flow<String> = flow {
+
     val sb = StringBuilder()
 
-    // Tokens that can form "paired spans" (must close before we emit the opener)
-    val pairedSpans = listOf("```", "**", "__", "~~", "`")
+    fun normalizeIn(text: String): String {
+        if (!normalizeSpaces) return text
+        // normalize tabs to space; keep \n as-is
+        return buildString(text.length) {
+            for (c in text) append(if (c == '\t') ' ' else c)
+        }
+    }
 
-    // Other specials we can emit immediately (structure/whitespace/punct)
-    val specials = listOf(
-        "#######", "######", "#####", "####", "###", "##", "#",
-        "\n", "\t", " ",
-        ">", "-", "*", "+",
-        "|",
-        "[", "]", "(", ")",
-        "!"
-    )
+    suspend fun emitToken(token: String) {
+        if (token.isEmpty()) return
+        emit(token)
+        delay(delayMillis)
+    }
+
+    // We support these paired spans as atomic units
+     val pairedDelims = listOf("```", "**", "__", "~~", "`")
 
     fun StringBuilder.startsWithToken(token: String): Boolean {
         if (length < token.length) return false
@@ -180,285 +200,159 @@ fun Flow<String>.deltasToMarkdownTokensWithDelay2(
         return true
     }
 
-    fun StringBuilder.indexOfToken(token: String, start: Int): Int {
-        if (token.isEmpty() || start < 0) return -1
-        val lastStart = length - token.length
-        for (i in start..lastStart) {
+    fun StringBuilder.indexOfToken(token: String, start: Int, endExclusive: Int = length): Int {
+        val max = endExclusive - token.length
+        var i = start
+        while (i <= max) {
             var ok = true
             for (k in token.indices) {
                 if (this[i + k] != token[k]) {
-                    ok = false; break
+                    ok = false
+                    break
                 }
             }
             if (ok) return i
+            i++
         }
         return -1
     }
 
     /**
-     * 1) If buffer starts with a paired span token, only emit when we have the closing token too.
-     *    Emit the entire completed span as ONE token, e.g. "**hello**", "`code`", "```...\n```".
+     * Consume:
+     * - newline as "\n"
+     * - completed paired span as one token (e.g., "**bold**")
+     * - otherwise, a full word token (optionally with ONE trailing space)
+     *
+     * Returns null if we need more input (e.g., buffer begins with an opening delimiter but no closing yet).
      */
-    fun StringBuilder.consumeCompletedSpanOrNull(): String? {
-        val opener = pairedSpans.firstOrNull { startsWithToken(it) } ?: return null
-        val closeAt = indexOfToken(opener, start = opener.length)
-        if (closeAt < 0) return null // wait for closing delimiter
+    data class Out(val token: String, val isSpan: Boolean)
 
-        val endExclusive = closeAt + opener.length
-        val span = substring(0, endExclusive)
-        delete(0, endExclusive)
-        return span
-    }
+    fun StringBuilder.consumeOneWordStableOrNull(): Out? {
+        if (isEmpty()) return null
 
-    /**
-     * 2) Emit non-span specials immediately (headings markers, whitespace, list markers, etc.)
-     *    Note: we intentionally do NOT include "**", "__", "~~", "`", "```" here.
-     */
-    fun StringBuilder.consumeImmediateSpecialOrNull(): String? {
-        for (t in specials) {
-            if (startsWithToken(t)) {
-                delete(0, t.length)
-                return t
-            }
+        // 1) newline atomic
+        if (this[0] == '\n') {
+            delete(0, 1)
+            return Out("\n", isSpan = false)
         }
-        return null
-    }
 
-    fun StringBuilder.indexOfAnySpecialStart(allSpecials: List<String>): Int {
-        if (isEmpty()) return -1
-        for (i in 0 until length) {
-            for (token in allSpecials) {
-                if (i + token.length > length) continue
-                var ok = true
-                for (k in token.indices) {
-                    if (this[i + k] != token[k]) {
-                        ok = false; break
-                    }
-                }
-                if (ok) return i
-            }
+        // 2) collapse leading spaces into at most one space token,
+        //    BUT: for trail-rects you usually want spaces attached to words; we still handle leading spaces.
+        if (this[0] == ' ') {
+            var i = 0
+            while (i < length && this[i] == ' ') i++
+            delete(0, i)
+            return Out(" ", isSpan = false)
         }
-        return -1
-    }
 
-    fun StringBuilder.longestSuffixThatIsPrefixOfAnyToken(tokens: List<String>): Int {
-        if (isEmpty()) return 0
-        val maxTokenLen = tokens.maxOf { it.length }
-        val maxCheck = minOf(length, maxTokenLen - 1)
-        var keep = 0
+        // 3) if starts with paired delimiter, only emit if span completes (STRICT).
+        //    This prevents "**" + "bo" + "ld" + "**" emissions.
+        for (delim in pairedDelims) {
+            if (!startsWithToken(delim)) continue
 
-        for (suffixLen in 1..maxCheck) {
-            val start = length - suffixLen
-            var isPrefix = false
-            for (t in tokens) {
-                if (t.length <= suffixLen) continue
+            // Special-case triple fence behavior
+            if (delim == "```" && !strictTripleBackticks) {
+                // treat literally
+                delete(0, 3)
+                return Out("```", isSpan = false)
+            }
+
+            val start = delim.length
+            val endIdx = indexOfToken(delim, start)
+            if (endIdx == -1) {
+                // Wait: do NOT emit delimiter or inner text yet
+                return null
+            }
+
+            val endExclusive = endIdx + delim.length
+            val span = substring(0, endExclusive)
+            delete(0, endExclusive)
+            return Out(span, isSpan = true)
+        }
+
+        // 4) Not starting with delimiter: consume a full word token.
+        //    Word token ends at whitespace/newline OR at a delimiter boundary.
+        var i = 0
+        while (i < length) {
+            val ch = this[i]
+            if (ch == '\n' || ch == ' ') break
+
+            // stop before delimiter boundary so spans stay atomic
+            var hitsDelim = false
+            for (delim in pairedDelims) {
+                val canCheck = i + delim.length <= length
+                if (!canCheck) continue
                 var ok = true
-                for (k in 0 until suffixLen) {
-                    if (this[start + k] != t[k]) {
-                        ok = false; break
+                for (k in delim.indices) {
+                    if (this[i + k] != delim[k]) {
+                        ok = false
+                        break
                     }
                 }
                 if (ok) {
-                    isPrefix = true; break
+                    hitsDelim = true
+                    break
                 }
             }
-            if (isPrefix) keep = suffixLen
-        }
-        return keep
-    }
+            if (hitsDelim) break
 
-    /**
-     * 3) Emit plain text runs. Do not get stuck when there is no boundary;
-     *    emit safe text, keep only a suffix that might become a special token.
-     */
-    fun StringBuilder.consumeTextRunOrNull(): String? {
-        if (isEmpty()) return null
-
-        // If buffer begins with a span opener or an immediate special, don't consume text.
-        if (pairedSpans.any { startsWithToken(it) }) return null
-        if (specials.any { startsWithToken(it) }) return null
-
-        // Boundaries include BOTH span openers and immediate specials.
-        val allBoundaries = pairedSpans + specials
-        val boundary = indexOfAnySpecialStart(allBoundaries)
-
-        return if (boundary >= 0) {
-            if (boundary == 0) null
-            else substring(0, boundary).also { delete(0, boundary) }
-        } else {
-            // No complete boundary exists: emit safe prefix, keep possible partial-special suffix
-            val keep = longestSuffixThatIsPrefixOfAnyToken(allBoundaries)
-            val emitLen = length - keep
-            if (emitLen <= 0) null
-            else substring(0, emitLen).also { delete(0, emitLen) }
-        }
-    }
-
-    suspend fun emitToken(token: String) {
-        val out = when (token) {
-            " ", "\t" -> " "
-            else -> token
-        }
-        emit(out)
-        delay(delayMillis)
-    }
-
-    collect { delta ->
-        if (delta.isEmpty()) return@collect
-        sb.append(delta.replace("\r\n", "\n").replace("\r", "\n"))
-
-        while (true) {
-            // A) Completed paired spans first (emit **hello** as one token)
-            val span = sb.consumeCompletedSpanOrNull()
-            if (span != null) {
-                emitToken(span)
-                continue
-            }
-
-            // B) Immediate specials (headings markers, whitespace, etc.)
-            val special = sb.consumeImmediateSpecialOrNull()
-            if (special != null) {
-                emitToken(special)
-                continue
-            }
-
-            // C) Plain text run
-            val run = sb.consumeTextRunOrNull()
-            if (run != null) {
-                emitToken(run)
-                continue
-            }
-
-            break
-        }
-    }
-
-    if (flushRemainderOnComplete && sb.isNotEmpty()) {
-        emit(sb.toString())
-        delay(delayMillis)
-    }
-}
-
-
-/**
- * Stream text as "tokens" suitable for Markdown:
- * - Emits markdown markers like **, ##, `, ``` as atomic tokens
- * - Emits \n as its own token (important for headings/lists/tables)
- * - Emits normal words/text runs between separators
- * - Adds delay after each emit
- *
- * This prevents breaking Markdown syntax mid-stream.
- */
-fun Flow<String>.deltasToMarkdownTokensWithDelay(
-    delayMillis: Long = 16L,
-    flushRemainderOnComplete: Boolean = true
-): Flow<String> = flow {
-    val sb = StringBuilder()
-
-    // Prefer longer tokens first to avoid splitting (e.g., "```" before "`", "**" before "*")
-    val specials = listOf(
-        "```", "**", "__", "~~", // strong/emphasis/strike/code fence
-        "#######", "######", "#####", "####", "###", "##", "#", // headings
-        "\n", "\t", " ",         // whitespace (newline emitted as-is; spaces/tabs normalized)
-        "`", ">", "-", "*", "+", // common markdown list/quote markers
-        "|",                     // tables
-        "[", "]", "(", ")",      // links
-        "!"                      // image/link prefix
-    )
-
-    fun StringBuilder.startsWithToken(token: String): Boolean {
-        if (length < token.length) return false
-        for (i in token.indices) if (this[i] != token[i]) return false
-        return true
-    }
-
-    fun StringBuilder.consumeSpecialOrNull(): String? {
-        for (t in specials) {
-            // Don't emit a partial special token; wait for more input
-            if (startsWithToken(t)) {
-                delete(0, t.length)
-                return t
-            }
-        }
-        return null
-    }
-
-    fun StringBuilder.consumeTextRunOrNull(): String? {
-        if (isEmpty()) return null
-
-        // If the buffer begins with a special token, don't consume text
-        if (specials.any { startsWithToken(it) }) return null
-
-        // Consume until we reach a special token boundary
-        var i = 0
-        while (i < length) {
-            val hit = specials.any { token ->
-                // check boundary at i
-                if (i + token.length > length) false
-                else {
-                    var ok = true
-                    for (k in token.indices) {
-                        if (this[i + k] != token[k]) {
-                            ok = false; break
-                        }
-                    }
-                    ok
-                }
-            }
-            if (hit) break
             i++
         }
 
-        // If we consumed all and there's no boundary, this may be incomplete; wait for more
-        if (i == length) return null
+        if (i == 0) return null
 
-        val run = substring(0, i)
+        val word = substring(0, i)
         delete(0, i)
-        return run
-    }
 
-    suspend fun emitToken(token: String) {
-        // Normalize spaces/tabs to a single space; keep newlines as-is
-        val out = when (token) {
-            " ", "\t" -> " "
-            else -> token
+        if (attachSingleTrailingSpace && isNotEmpty() && this[0] == ' ') {
+            // consume ALL following spaces but emit ONE (normalization)
+            var j = 0
+            while (j < length && this[j] == ' ') j++
+            delete(0, j)
+            return Out(word + " ", isSpan = false)
         }
-        emit(out)
-        delay(delayMillis)
+
+        return Out(word, isSpan = false)
     }
 
     collect { delta ->
         if (delta.isEmpty()) return@collect
+        sb.append(normalizeIn(delta).replace("\r\n", "\n").replace("\r", "\n"))
 
-        // Normalize CRLF/CR to LF so newline handling is consistent
-        sb.append(delta.replace("\r\n", "\n").replace("\r", "\n"))
+        var wordBudget = maxWordTokensPerFlush
+        var spanBudget = maxSpansPerFlush
 
         while (true) {
-            // 1) Prefer emitting specials (markdown markers/newlines) atomically
-            val special = sb.consumeSpecialOrNull()
-            if (special != null) {
-                emitToken(special)
+            val out = sb.consumeOneWordStableOrNull() ?: break
+
+            if (out.isSpan) {
+                if (spanBudget <= 0) {
+                    // put back
+                    sb.insert(0, out.token)
+                    break
+                }
+                spanBudget--
+                // Note: spans may contain multiple words; for rects you likely animate them as one block.
+                emitToken(out.token)
                 continue
             }
 
-            // 2) Otherwise emit a text run (word-like chunk between markers/whitespace)
-            val run = sb.consumeTextRunOrNull()
-            if (run != null) {
-                emitToken(run)
-                continue
+            if (wordBudget <= 0) {
+                sb.insert(0, out.token)
+                break
             }
-
-            // Need more input to decide (prevents breaking markers like "**" or "```")
-            break
+            wordBudget--
+            emitToken(out.token)
         }
     }
 
     if (flushRemainderOnComplete && sb.isNotEmpty()) {
-        // At completion, emit whatever is left (even if incomplete markers)
-        emit(sb.toString())
-        delay(delayMillis)
+        // If remainder begins with an unclosed delimiter, emitting it can still cause reflow.
+        // For rect-accuracy, you may prefer flushRemainderOnComplete=false.
+        emitToken(sb.toString())
     }
 }
+
 
 /**
  * Stream text in Markdown-safe chunks:

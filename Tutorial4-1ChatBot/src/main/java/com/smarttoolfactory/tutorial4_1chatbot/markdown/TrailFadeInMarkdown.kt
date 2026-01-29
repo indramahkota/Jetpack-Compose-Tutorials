@@ -181,7 +181,7 @@ internal fun RichTextScope.MarkdownFadeInRichText(
                     )
                 }
 
-                println("onTextLayout: $text, startIndex: $startIndex, endIndex: $endIndex, ${newRects.size}")
+//                println("onTextLayout: $text, startIndex: $startIndex, endIndex: $endIndex, ${newRects.size}")
 
                 startIndex = endIndex + 1
 
