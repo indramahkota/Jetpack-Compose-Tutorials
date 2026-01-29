@@ -57,6 +57,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.coerceAtLeast
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -312,11 +313,14 @@ fun ChatScreen(
                     val modifier = if (msg.role == Role.Assistant &&
                         messages.lastIndex == index
                     ) {
-                        Modifier.heightIn(lastItemHeight - contentPaddingBottom - itemSpacing)
-                            .border(2.dp, Color.Magenta)
+                        Modifier.heightIn(
+                            min = (lastItemHeight - contentPaddingBottom - itemSpacing)
+                                .coerceAtLeast(0.dp)
+                        )
+//                            .border(2.dp, Color.Magenta)
                     } else if (index == 0 && messages.size <= 2) {
                         Modifier.padding(top = initialItemPadding)
-                            .border(2.dp, Color.Black)
+//                            .border(2.dp, Color.Black)
                     } else {
                         Modifier
 //                            .border(2.dp, Color.Blue)
@@ -647,17 +651,17 @@ private fun UpdateScrollState(
         }
     }
 
-    Text(
-        modifier = Modifier
-            .padding(start = 190.dp)
-            .padding(top = 120.dp),
-        fontSize = 16.sp,
-        color = Color.Red,
-        text = "STATUS: $messageStatus\n" +
-                "autoScrollToBottom: $autoScrollToBottom\n" +
-                "isAboveBottom: $isAboveBottom\n" +
-                "isScrollInProgress: ${listState.isScrollInProgress}"
-    )
+//    Text(
+//        modifier = Modifier
+//            .padding(start = 190.dp)
+//            .padding(top = 120.dp),
+//        fontSize = 16.sp,
+//        color = Color.Red,
+//        text = "STATUS: $messageStatus\n" +
+//                "autoScrollToBottom: $autoScrollToBottom\n" +
+//                "isAboveBottom: $isAboveBottom\n" +
+//                "isScrollInProgress: ${listState.isScrollInProgress}"
+//    )
 
     // Reset pin whenever status changes
     LaunchedEffect(messageStatus) {
@@ -692,15 +696,16 @@ private fun UpdateScrollState(
                 // 2) While queued (and keyboard closed): measure bottom gap & scroll user prompt to top once
                 if (messageStatus == MessageStatus.Queued && !isKeyboardOpen) {
                     if (total >= 2) {
-                        val lastUserIndex = total - 2
+                        val lastUserMessageIndex = total - 2
 
-                        val lastUserMessageItem = visible.firstOrNull { it.index == lastUserIndex }
+                        val lastUserMessageItem =
+                            visible.firstOrNull { it.index == lastUserMessageIndex }
 
                         if (lastUserMessageItem != null) {
                             // Ensure layout is settled for this frame before reading viewport offsets.
                             awaitFrame()
 
-                            if (!queuedLastItemHeightComputed) {
+                            if (!queuedLastItemHeightComputed && total > 2) {
                                 val viewportEndOffset = info.viewportEndOffset
                                 val lastUserMessageBottom = lastUserMessageItem.size
                                 val gap = viewportEndOffset - lastUserMessageBottom
@@ -717,18 +722,18 @@ private fun UpdateScrollState(
 
                             if (!queuedScrollDone) {
                                 try {
-                                    listState.animateScrollToItem(lastUserIndex)
+                                    listState.animateScrollToItem(lastUserMessageIndex)
                                 } catch (_: CancellationException) {
-                                    listState.requestScrollToItem(lastUserIndex)
+                                    listState.requestScrollToItem(lastUserMessageIndex)
                                 }
                                 queuedScrollDone = true
                             }
                         } else {
                             // Pre-scroll to bring the user message into viewport so it can be measured
                             try {
-                                listState.animateScrollToItem(lastUserIndex)
+                                listState.animateScrollToItem(lastUserMessageIndex)
                             } catch (_: CancellationException) {
-                                listState.requestScrollToItem(lastUserIndex)
+                                listState.requestScrollToItem(lastUserMessageIndex)
                             }
                         }
                     }
