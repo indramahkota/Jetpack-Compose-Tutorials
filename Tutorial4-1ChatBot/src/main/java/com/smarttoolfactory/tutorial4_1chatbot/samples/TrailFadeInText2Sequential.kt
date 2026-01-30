@@ -27,7 +27,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.tooling.preview.Preview
@@ -362,11 +364,11 @@ private fun ContentDrawScope.drawFadeInRects(rectList: List<RectWithAnimation>) 
 //        )
 
         // For Debugging
-//        drawRect(
-//            color = lerp(Color.Red, Color.Green, progress),
-//            topLeft = topLeft,
-//            size = rectSize,
-//            style = Stroke(2.dp.toPx())
-//        )
+        drawRect(
+            color = lerp(Color.Red, Color.Green, progress),
+            topLeft = topLeft,
+            size = rectSize,
+            style = Stroke(2.dp.toPx())
+        )
     }
 }

@@ -92,43 +92,6 @@ internal fun calculateBoundingRectList(
     return rectList
 }
 
-internal fun calculateBoundingRectList(
-    textLayoutResult: TextLayoutResult,
-    startIndex: Int,
-    endIndex: Int
-): List<Rect> {
-
-    val text = textLayoutResult.layoutInput.text
-    if (text.isEmpty()) return emptyList()
-    if (startIndex > endIndex) return emptyList()
-
-    val lastIndex = (text.length - 1).coerceAtLeast(0)
-
-    val safeStart = startIndex.coerceIn(0, lastIndex)
-    val safeEnd = endIndex.coerceIn(0, lastIndex)
-
-    val startLine = textLayoutResult.getLineForOffset(safeStart)
-    val endLine = textLayoutResult.getLineForOffset(safeEnd)
-
-    val rectList = mutableListOf<Rect>()
-
-    for (currentLine in startLine..endLine) {
-        val rect = getBoundingRectForLine(
-            textLayoutResult = textLayoutResult,
-            startIndex = safeStart,
-            endIndex = safeEnd,
-            startLine = startLine,
-            endLine = endLine,
-            currentLine = currentLine
-        )
-
-        if (rect.width > 0f && rect.height > 0f) {
-            rectList.add(rect)
-        }
-    }
-    return rectList
-}
-
 private fun splitLineIntoWordRects(
     layout: TextLayoutResult,
     line: Int,

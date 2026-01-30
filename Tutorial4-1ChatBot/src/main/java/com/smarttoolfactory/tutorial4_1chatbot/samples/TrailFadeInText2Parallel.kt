@@ -91,7 +91,7 @@ private fun TrailFadeInParallelPreview() {
         Spacer(modifier = Modifier.height(16.dp))
         TrailFadeInText(
             text = chunkText,
-            modifier = Modifier.fillMaxWidth().height(160.dp)
+            modifier = Modifier.fillMaxWidth().height(160.dp),
         )
 
         Text("TrailFadeInTextParallelWithChannel", fontSize = 18.sp)

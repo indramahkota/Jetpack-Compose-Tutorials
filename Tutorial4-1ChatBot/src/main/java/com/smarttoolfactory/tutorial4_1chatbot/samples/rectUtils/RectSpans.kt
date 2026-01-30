@@ -11,6 +11,93 @@ internal data class RectSpan(
     val line: Int
 )
 
+internal fun calculateBoundingRectSpans(
+    textLayoutResult: TextLayoutResult,
+    startIndex: Int,
+    endIndex: Int
+): List<RectSpan> {
+    val text = textLayoutResult.layoutInput.text
+    if (text.isEmpty()) return emptyList()
+    if (startIndex > endIndex) return emptyList()
+
+    val lastIndex = text.length - 1
+    val safeStart = startIndex.coerceIn(0, lastIndex)
+    val safeEnd = endIndex.coerceIn(0, lastIndex)
+
+    val startLine = textLayoutResult.getLineForOffset(safeStart)
+    val endLine = textLayoutResult.getLineForOffset(safeEnd)
+
+    val spans = mutableListOf<RectSpan>()
+
+    for (line in startLine..endLine) {
+        val lineStartIndex = textLayoutResult.getLineStart(line)
+        val lineLastVisible = lastVisibleOffsetOnLine(layout = textLayoutResult, line = line)
+
+        val spanStart = when {
+            line == startLine -> safeStart
+            else -> lineStartIndex
+        }
+
+        val spanEnd = when {
+            line == endLine -> minOf(safeEnd, lineLastVisible)
+            else -> lineLastVisible
+        }
+
+        if (spanStart > spanEnd) continue
+
+        val lineTop = textLayoutResult.getLineTop(line)
+        val lineBottom = textLayoutResult.getLineBottom(line)
+        val lineLeft = textLayoutResult.getLineLeft(line)
+
+        val rect = when {
+            // single line
+            startLine == endLine -> {
+                val startRect = safeBoxOrCursor(layout = textLayoutResult, offset = spanStart)
+                val endRect = safeBoxOrCursor(layout = textLayoutResult, offset = spanEnd)
+                val unionRect = startRect.union(endRect)
+                Rect(
+                    topLeft = Offset(unionRect.left, lineTop),
+                    bottomRight = Offset(unionRect.right, lineBottom)
+                )
+            }
+
+            // first line
+            line == startLine -> {
+                val startRect = safeBoxOrCursor(layout = textLayoutResult, offset = spanStart)
+                val endRect = safeBoxOrCursor(layout = textLayoutResult, offset = spanEnd)
+                Rect(
+                    topLeft = Offset(startRect.left, lineTop),
+                    bottomRight = Offset(endRect.right, lineBottom)
+                )
+            }
+
+            // last line
+            line == endLine -> {
+                val endRect = safeBoxOrCursor(layout = textLayoutResult, offset = spanEnd)
+                Rect(
+                    topLeft = Offset(lineLeft, lineTop),
+                    bottomRight = Offset(endRect.right, lineBottom)
+                )
+            }
+
+            // middle lines
+            else -> {
+                val endRect = safeBoxOrCursor(layout = textLayoutResult, offset = spanEnd)
+                Rect(
+                    topLeft = Offset(lineLeft, lineTop),
+                    bottomRight = Offset(endRect.right, lineBottom)
+                )
+            }
+        }
+
+        if (rect.width > 0f && rect.height > 0f) {
+            spans += RectSpan(rect = rect, charStart = spanStart, charEnd = spanEnd, line = line)
+        }
+    }
+
+    return spans
+}
+
 internal sealed interface SpanSegmentation {
     /** Current behavior: one RectSpan per affected layout line */
     data object Lines : SpanSegmentation
@@ -255,94 +342,6 @@ private fun splitLineIntoFixedCharSpans(
         }
 
         i = chunkEnd + 1
-    }
-
-    return spans
-}
-
-
-internal fun calculateBoundingRectSpans(
-    textLayoutResult: TextLayoutResult,
-    startIndex: Int,
-    endIndex: Int
-): List<RectSpan> {
-    val text = textLayoutResult.layoutInput.text
-    if (text.isEmpty()) return emptyList()
-    if (startIndex > endIndex) return emptyList()
-
-    val lastIndex = text.length - 1
-    val safeStart = startIndex.coerceIn(0, lastIndex)
-    val safeEnd = endIndex.coerceIn(0, lastIndex)
-
-    val startLine = textLayoutResult.getLineForOffset(safeStart)
-    val endLine = textLayoutResult.getLineForOffset(safeEnd)
-
-    val spans = mutableListOf<RectSpan>()
-
-    for (line in startLine..endLine) {
-        val lineStartIndex = textLayoutResult.getLineStart(line)
-        val lineLastVisible = lastVisibleOffsetOnLine(layout = textLayoutResult, line = line)
-
-        val spanStart = when {
-            line == startLine -> safeStart
-            else -> lineStartIndex
-        }
-
-        val spanEnd = when {
-            line == endLine -> minOf(safeEnd, lineLastVisible)
-            else -> lineLastVisible
-        }
-
-        if (spanStart > spanEnd) continue
-
-        val lineTop = textLayoutResult.getLineTop(line)
-        val lineBottom = textLayoutResult.getLineBottom(line)
-        val lineLeft = textLayoutResult.getLineLeft(line)
-
-        val rect = when {
-            // single line
-            startLine == endLine -> {
-                val startRect = safeBoxOrCursor(layout = textLayoutResult, offset = spanStart)
-                val endRect = safeBoxOrCursor(layout = textLayoutResult, offset = spanEnd)
-                val unionRect = startRect.union(endRect)
-                Rect(
-                    topLeft = Offset(unionRect.left, lineTop),
-                    bottomRight = Offset(unionRect.right, lineBottom)
-                )
-            }
-
-            // first line
-            line == startLine -> {
-                val startRect = safeBoxOrCursor(layout = textLayoutResult, offset = spanStart)
-                val endRect = safeBoxOrCursor(layout = textLayoutResult, offset = spanEnd)
-                Rect(
-                    topLeft = Offset(startRect.left, lineTop),
-                    bottomRight = Offset(endRect.right, lineBottom)
-                )
-            }
-
-            // last line
-            line == endLine -> {
-                val endRect = safeBoxOrCursor(layout = textLayoutResult, offset = spanEnd)
-                Rect(
-                    topLeft = Offset(lineLeft, lineTop),
-                    bottomRight = Offset(endRect.right, lineBottom)
-                )
-            }
-
-            // middle lines
-            else -> {
-                val endRect = safeBoxOrCursor(layout = textLayoutResult, offset = spanEnd)
-                Rect(
-                    topLeft = Offset(lineLeft, lineTop),
-                    bottomRight = Offset(endRect.right, lineBottom)
-                )
-            }
-        }
-
-        if (rect.width > 0f && rect.height > 0f) {
-            spans += RectSpan(rect = rect, charStart = spanStart, charEnd = spanEnd, line = line)
-        }
     }
 
     return spans
