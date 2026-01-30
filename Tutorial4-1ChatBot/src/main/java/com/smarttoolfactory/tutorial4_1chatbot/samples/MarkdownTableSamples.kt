@@ -334,6 +334,12 @@ internal fun RichTextScope.CustomTable(
                         contentAlignment = alignment
                     ) {
                         if (cellNode != null) {
+
+//                            MarkdownFadeInRichText(
+//                                modifier = Modifier
+//                                    .matchParentSize(),
+//                                astNode = cellNode
+//                            )
                             MarkdownRichText(
                                 modifier = Modifier
                                     .matchParentSize(),
@@ -387,8 +393,8 @@ private fun CustomComposer(
             ) {
                 if (astNode.type is AstTableRoot) {
                     content(astNode, visitChildren)
-                } else if(astNode.type is AstParagraph){
-                    Box(modifier = Modifier.border(2.dp, Color.Green)){
+                } else if (astNode.type is AstParagraph) {
+                    Box(modifier = Modifier.border(2.dp, Color.Green)) {
                         MarkdownRichText(astNode)
                     }
                 }

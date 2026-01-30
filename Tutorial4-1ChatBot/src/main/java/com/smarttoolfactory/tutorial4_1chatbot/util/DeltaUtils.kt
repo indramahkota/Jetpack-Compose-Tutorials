@@ -16,7 +16,6 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.halilibo.richtext.commonmark.Markdown
 import com.halilibo.richtext.ui.BasicRichText
 import com.halilibo.richtext.ui.RichTextStyle
 import com.halilibo.richtext.ui.RichTextThemeProvider
@@ -148,7 +147,10 @@ fun MarkdownTokenStreamPreview() {
                 modifier = Modifier,
                 style = RichTextStyle.Default
             ) {
-                MarkdownComposer(markdown = rendered)
+                MarkdownComposer(
+                    markdown = rendered,
+                    debug = false
+                )
             }
 
 //        BasicRichText(
@@ -160,212 +162,6 @@ fun MarkdownTokenStreamPreview() {
         }
     }
 }
-
-/**
- * Stream as WORD-STABLE tokens for trail-rect animations.
- *
- * Guarantees:
- * - Emits full "word + optional single space" tokens (outside of markdown spans).
- * - Emits completed markdown spans as ONE atomic token:
- *      **...**, __...__, ~~...~~, `...`
- * - Newlines are emitted as their own token.
- *
- * Design goal:
- * - Prevent reflow surprises for rectangle-based animations by NOT emitting words that might later
- *   become bold/italic/code due to an unfinished opening delimiter upstream.
- */
-fun Flow<String>.deltasToWordStableMarkdownTokensWithDelay(
-    delayMillis: Long = 16L,
-    flushRemainderOnComplete: Boolean = true,
-    normalizeSpaces: Boolean = true,
-    // Attach one trailing space to the previous word token to reduce token count/recomposition
-    attachSingleTrailingSpace: Boolean = true,
-    // If true, keep triple fences as STRICT blocks (buffer until closing ```), otherwise treat ``` literally.
-    strictTripleBackticks: Boolean = true,
-    // Budget: max number of emitted word tokens per incoming delta flush.
-    maxWordTokensPerFlush: Int = Int.MAX_VALUE,
-    // Budget: max number of emitted completed spans per incoming delta flush.
-    maxSpansPerFlush: Int = Int.MAX_VALUE,
-): Flow<String> = flow {
-
-    val sb = StringBuilder()
-
-    fun normalizeIn(text: String): String {
-        if (!normalizeSpaces) return text
-        // normalize tabs to space; keep \n as-is
-        return buildString(text.length) {
-            for (c in text) append(if (c == '\t') ' ' else c)
-        }
-    }
-
-    suspend fun emitToken(token: String) {
-        if (token.isEmpty()) return
-        emit(token)
-        delay(delayMillis)
-    }
-
-    // We support these paired spans as atomic units
-    val pairedDelims = listOf("```", "**", "__", "~~", "`")
-
-    fun StringBuilder.startsWithToken(token: String): Boolean {
-        if (length < token.length) return false
-        for (i in token.indices) if (this[i] != token[i]) return false
-        return true
-    }
-
-    fun StringBuilder.indexOfToken(token: String, start: Int, endExclusive: Int = length): Int {
-        val max = endExclusive - token.length
-        var i = start
-        while (i <= max) {
-            var ok = true
-            for (k in token.indices) {
-                if (this[i + k] != token[k]) {
-                    ok = false
-                    break
-                }
-            }
-            if (ok) return i
-            i++
-        }
-        return -1
-    }
-
-    /**
-     * Consume:
-     * - newline as "\n"
-     * - completed paired span as one token (e.g., "**bold**")
-     * - otherwise, a full word token (optionally with ONE trailing space)
-     *
-     * Returns null if we need more input (e.g., buffer begins with an opening delimiter but no closing yet).
-     */
-    data class Out(val token: String, val isSpan: Boolean)
-
-    fun StringBuilder.consumeOneWordStableOrNull(): Out? {
-        if (isEmpty()) return null
-
-        // 1) newline atomic
-        if (this[0] == '\n') {
-            delete(0, 1)
-            return Out("\n", isSpan = false)
-        }
-
-        // 2) collapse leading spaces into at most one space token,
-        //    BUT: for trail-rects you usually want spaces attached to words; we still handle leading spaces.
-        if (this[0] == ' ') {
-            var i = 0
-            while (i < length && this[i] == ' ') i++
-            delete(0, i)
-            return Out(" ", isSpan = false)
-        }
-
-        // 3) if starts with paired delimiter, only emit if span completes (STRICT).
-        //    This prevents "**" + "bo" + "ld" + "**" emissions.
-        for (delim in pairedDelims) {
-            if (!startsWithToken(delim)) continue
-
-            // Special-case triple fence behavior
-            if (delim == "```" && !strictTripleBackticks) {
-                // treat literally
-                delete(0, 3)
-                return Out("```", isSpan = false)
-            }
-
-            val start = delim.length
-            val endIdx = indexOfToken(delim, start)
-            if (endIdx == -1) {
-                // Wait: do NOT emit delimiter or inner text yet
-                return null
-            }
-
-            val endExclusive = endIdx + delim.length
-            val span = substring(0, endExclusive)
-            delete(0, endExclusive)
-            return Out(span, isSpan = true)
-        }
-
-        // 4) Not starting with delimiter: consume a full word token.
-        //    Word token ends at whitespace/newline OR at a delimiter boundary.
-        var i = 0
-        while (i < length) {
-            val ch = this[i]
-            if (ch == '\n' || ch == ' ') break
-
-            // stop before delimiter boundary so spans stay atomic
-            var hitsDelim = false
-            for (delim in pairedDelims) {
-                val canCheck = i + delim.length <= length
-                if (!canCheck) continue
-                var ok = true
-                for (k in delim.indices) {
-                    if (this[i + k] != delim[k]) {
-                        ok = false
-                        break
-                    }
-                }
-                if (ok) {
-                    hitsDelim = true
-                    break
-                }
-            }
-            if (hitsDelim) break
-
-            i++
-        }
-
-        if (i == 0) return null
-
-        val word = substring(0, i)
-        delete(0, i)
-
-        if (attachSingleTrailingSpace && isNotEmpty() && this[0] == ' ') {
-            // consume ALL following spaces but emit ONE (normalization)
-            var j = 0
-            while (j < length && this[j] == ' ') j++
-            delete(0, j)
-            return Out(word + " ", isSpan = false)
-        }
-
-        return Out(word, isSpan = false)
-    }
-
-    collect { delta ->
-        if (delta.isEmpty()) return@collect
-        sb.append(normalizeIn(delta).replace("\r\n", "\n").replace("\r", "\n"))
-
-        var wordBudget = maxWordTokensPerFlush
-        var spanBudget = maxSpansPerFlush
-
-        while (true) {
-            val out = sb.consumeOneWordStableOrNull() ?: break
-
-            if (out.isSpan) {
-                if (spanBudget <= 0) {
-                    // put back
-                    sb.insert(0, out.token)
-                    break
-                }
-                spanBudget--
-                // Note: spans may contain multiple words; for rects you likely animate them as one block.
-                emitToken(out.token)
-                continue
-            }
-
-            if (wordBudget <= 0) {
-                sb.insert(0, out.token)
-                break
-            }
-            wordBudget--
-            emitToken(out.token)
-        }
-    }
-
-    if (flushRemainderOnComplete && sb.isNotEmpty()) {
-        // If remainder begins with an unclosed delimiter, emitting it can still cause reflow.
-        // For rect-accuracy, you may prefer flushRemainderOnComplete=false.
-        emitToken(sb.toString())
-    }
-}
-
 
 /**
  * Stream text in Markdown-safe chunks:

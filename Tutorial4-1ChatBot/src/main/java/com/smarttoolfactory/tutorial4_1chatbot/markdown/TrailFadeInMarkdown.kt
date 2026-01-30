@@ -44,7 +44,8 @@ import kotlinx.coroutines.launch
 
 @Composable
 internal fun MarkdownComposer(
-    markdown: String
+    markdown: String,
+    debug: Boolean = false,
 ) {
     val commonmarkAstNodeParser: CommonmarkAstNodeParser = remember {
         CommonmarkAstNodeParser()
@@ -82,7 +83,10 @@ internal fun MarkdownComposer(
                 if (astNode.type is AstTableRoot) {
                     CustomTable(tableRoot = astNode)
                 } else if (astNode.type is AstParagraph) {
-                    MarkdownFadeInRichText(astNode)
+                    MarkdownFadeInRichText(
+                        astNode = astNode,
+                        debug = debug
+                    )
                 }
             }
         }
