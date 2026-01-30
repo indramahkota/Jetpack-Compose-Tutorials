@@ -27,10 +27,10 @@ data class RectWithAnimation(
 
 internal data class RectWithAnimatable(
     val id: String,
-    val rect: Rect,
     val charStart: Int,
     val charEnd: Int,
     val batchId: Long = 0L,
+    val rect: Rect,
     val animatable: Animatable<Float, AnimationVector1D> = Animatable(0f),
 )
 

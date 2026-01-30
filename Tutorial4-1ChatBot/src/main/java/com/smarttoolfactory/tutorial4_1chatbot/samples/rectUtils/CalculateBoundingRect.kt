@@ -1,9 +1,8 @@
-package com.smarttoolfactory.tutorial4_1chatbot.samples
+package com.smarttoolfactory.tutorial4_1chatbot.samples.rectUtils
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.text.TextLayoutResult
-import com.smarttoolfactory.tutorial4_1chatbot.samples.rectUtils.union
 
 sealed interface LineSegmentation {
     data object None : LineSegmentation
