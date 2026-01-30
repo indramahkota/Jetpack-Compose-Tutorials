@@ -42,7 +42,10 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.smarttoolfactory.tutorial4_1chatbot.samples.rectUtils.DiffRange
 import com.smarttoolfactory.tutorial4_1chatbot.samples.rectUtils.RectWithColor
+import com.smarttoolfactory.tutorial4_1chatbot.samples.rectUtils.computeDiffRange
+import com.smarttoolfactory.tutorial4_1chatbot.samples.rectUtils.computeDiffRects
 import com.smarttoolfactory.tutorial4_1chatbot.samples.rectUtils.randomColor
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
