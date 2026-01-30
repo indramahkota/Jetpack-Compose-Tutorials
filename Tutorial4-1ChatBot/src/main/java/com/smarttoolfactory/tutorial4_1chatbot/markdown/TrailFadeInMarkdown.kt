@@ -35,12 +35,13 @@ import com.halilibo.richtext.ui.string.RichTextString
 import com.halilibo.richtext.ui.string.Text
 import com.smarttoolfactory.tutorial4_1chatbot.samples.CustomTable
 import com.smarttoolfactory.tutorial4_1chatbot.samples.LineSegmentation
-import com.smarttoolfactory.tutorial4_1chatbot.samples.RectWithAnimation
 import com.smarttoolfactory.tutorial4_1chatbot.samples.calculateBoundingRectList
+import com.smarttoolfactory.tutorial4_1chatbot.samples.rectUtils.RectWithAnimation
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.collections.forEachIndexed
 
 @Composable
 internal fun MarkdownComposer(

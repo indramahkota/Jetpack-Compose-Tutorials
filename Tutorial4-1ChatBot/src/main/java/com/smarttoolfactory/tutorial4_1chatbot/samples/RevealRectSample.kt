@@ -1,3 +1,5 @@
+package com.smarttoolfactory.tutorial4_1chatbot.samples
+
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -30,7 +32,6 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
-import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
@@ -41,11 +42,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.smarttoolfactory.tutorial4_1chatbot.samples.DiffRange
-import com.smarttoolfactory.tutorial4_1chatbot.samples.RectWithColor
-import com.smarttoolfactory.tutorial4_1chatbot.samples.computeDiffRange
-import com.smarttoolfactory.tutorial4_1chatbot.samples.computeDiffRects
-import com.smarttoolfactory.tutorial4_1chatbot.samples.randomColor
+import com.smarttoolfactory.tutorial4_1chatbot.samples.rectUtils.RectWithColor
+import com.smarttoolfactory.tutorial4_1chatbot.samples.rectUtils.randomColor
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
