@@ -12,11 +12,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.halilibo.richtext.commonmark.Markdown
 import com.halilibo.richtext.ui.BasicRichText
 import com.halilibo.richtext.ui.RichTextStyle
+import com.halilibo.richtext.ui.RichTextThemeProvider
 import com.smarttoolfactory.tutorial4_1chatbot.markdown.MarkdownComposer
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -132,19 +135,29 @@ fun MarkdownTokenStreamPreview() {
             .padding(16.dp)
     ) {
 
-        BasicRichText(
-            modifier = Modifier.padding(vertical = 16.dp),
-            style = RichTextStyle.Default
+        RichTextThemeProvider(
+            // Overrides every other style in BasicRichText
+            textStyleProvider = {
+                TextStyle.Default.copy(
+                    fontSize = 16.sp,
+                    lineHeight = 22.sp
+                )
+            }
         ) {
-            MarkdownComposer(markdown = rendered)
-        }
+            BasicRichText(
+                modifier = Modifier,
+                style = RichTextStyle.Default
+            ) {
+                MarkdownComposer(markdown = rendered)
+            }
 
 //        BasicRichText(
-//            modifier = Modifier.padding(vertical = 16.dp),
+//            modifier = Modifier,
 //            style = RichTextStyle.Default
 //        ) {
 //            Markdown(rendered)
 //        }
+        }
     }
 }
 
@@ -192,7 +205,7 @@ fun Flow<String>.deltasToWordStableMarkdownTokensWithDelay(
     }
 
     // We support these paired spans as atomic units
-     val pairedDelims = listOf("```", "**", "__", "~~", "`")
+    val pairedDelims = listOf("```", "**", "__", "~~", "`")
 
     fun StringBuilder.startsWithToken(token: String): Boolean {
         if (length < token.length) return false
