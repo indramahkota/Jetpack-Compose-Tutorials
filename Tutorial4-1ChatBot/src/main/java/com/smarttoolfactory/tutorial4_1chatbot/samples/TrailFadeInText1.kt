@@ -28,6 +28,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.smarttoolfactory.tutorial4_1chatbot.samples.rectUtils.RectWithColor
+import com.smarttoolfactory.tutorial4_1chatbot.samples.rectUtils.calculateBoundingRecWithColorList
 import kotlinx.coroutines.delay
 
 @Preview
