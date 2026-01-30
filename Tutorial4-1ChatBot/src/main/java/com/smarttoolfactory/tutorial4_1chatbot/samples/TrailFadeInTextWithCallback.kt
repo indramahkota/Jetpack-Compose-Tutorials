@@ -290,7 +290,7 @@ private fun TrailFadeInTextWithCallback(
                         jobsById.remove(rectWithAnimatable.id)
 
                         // Remove rect after animation (optional but typically desired)
-                        rectList.remove(rectWithAnimatable)
+//                        rectList.remove(rectWithAnimatable)
 
                         // ---- batch completion gate ----
                         val bid = rectWithAnimatable.batchId
