@@ -101,9 +101,9 @@ internal fun MarkdownComposer(
 internal fun RichTextScope.MarkdownFadeInRichText(
     astNode: AstNode,
     modifier: Modifier = Modifier,
-    delayInMillis: Long = 50L,
-    revealCoefficient: Float = 3f,
-    lingerInMillis: Long = 80L,
+    delayInMillis: Long = 90L,
+    revealCoefficient: Float = 4f,
+    lingerInMillis: Long = 90L,
     segmentation: LineSegmentation = LineSegmentation.None,
     debug: Boolean = true
 ) {
@@ -147,7 +147,9 @@ internal fun RichTextScope.MarkdownFadeInRichText(
                         )
                         delay(lingerInMillis)
                     } finally {
-//                        rectList.remove(rectWithAnimation)
+                        if (debug.not()){
+                            rectList.remove(rectWithAnimation)
+                        }
                         jobsByRectId.remove(id)
                     }
                 }

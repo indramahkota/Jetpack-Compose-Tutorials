@@ -579,7 +579,7 @@ internal fun calculateBoundingRectList(
     return rectList
 }
 
-fun lastVisibleOffsetOnLine(
+private fun lastVisibleOffsetOnLine(
     layout: TextLayoutResult,
     line: Int
 ): Int {
@@ -589,7 +589,7 @@ fun lastVisibleOffsetOnLine(
     return (visibleEndExclusive - 1).coerceAtLeast(lineStart)
 }
 
-fun safeBoxOrCursor(layout: TextLayoutResult, offset: Int): Rect {
+private fun safeBoxOrCursor(layout: TextLayoutResult, offset: Int): Rect {
     val boundingRect = layout.getBoundingBox(offset)
     return if (boundingRect.width <= 0f) layout.getCursorRect(offset) else boundingRect
 }
@@ -661,103 +661,6 @@ private fun getBoundingRectForLine(
                 bottomRight = Offset(endRect.right, lineBottom)
             )
         }
-    }
-}
-
-internal fun calculateBoundingRects(
-    textLayoutResult: TextLayoutResult,
-    startIndex: Int,
-    endIndex: Int
-): List<Rect> {
-
-    if (startIndex > endIndex) return emptyList()
-
-    val safeStart =
-        startIndex.coerceIn(0, (textLayoutResult.layoutInput.text.length - 1).coerceAtLeast(0))
-    val safeEnd =
-        (endIndex).coerceIn(0, (textLayoutResult.layoutInput.text.length - 1).coerceAtLeast(0))
-
-    val startLine = textLayoutResult.getLineForOffset(safeStart)
-    val endLine = textLayoutResult.getLineForOffset(safeEnd)
-
-    val rectList = mutableListOf<Rect>()
-
-    for (currentLine in startLine..endLine) {
-        val rect = getBoundingRectForCurrentLine(
-            textLayoutResult = textLayoutResult,
-            startIndex = safeStart,
-            endIndex = safeEnd,
-            startLine = startLine,
-            endLine = endLine,
-            currentLine = currentLine
-        )
-
-        if (rect.width > 0 && rect.height > 0) {
-            rectList.add(rect)
-        }
-    }
-    return rectList
-}
-
-private fun getBoundingRectForCurrentLine(
-    textLayoutResult: TextLayoutResult,
-    startIndex: Int,
-    endIndex: Int,
-    currentLine: Int,
-    startLine: Int,
-    endLine: Int
-): Rect {
-    return if (currentLine == startLine && startLine == endLine) {
-        //  This line contains both start and end indices
-        //  get bounding rects for start and end indices and create union of them
-        val startRect: Rect = textLayoutResult.getBoundingBox(startIndex)
-        var endRect: Rect = textLayoutResult.getBoundingBox(endIndex)
-        if (endRect.width <= 0) {
-            endRect = textLayoutResult.getCursorRect(endIndex)
-        }
-        startRect.union(endRect)
-
-    } else if (currentLine == startLine) {
-        // start index is in this line but end index is not in this line
-        // get bounding rect of char at start index and char at end of the line
-
-        val startRect: Rect = textLayoutResult.getBoundingBox(startIndex)
-
-        // 🔥EndRect does not return correct values if line ends with no width char like \n
-        // If \n is 11th character endRect becomes 12th instead of being last char of this line
-
-        val lineEndX: Float = textLayoutResult.getLineRight(currentLine)
-        val lineEndY: Float = textLayoutResult.getLineBottom(currentLine)
-
-        Rect(
-            topLeft = startRect.topLeft,
-            bottomRight = Offset(lineEndX, lineEndY)
-        )
-
-    } else if (currentLine == endLine) {
-        // end index is in this line but start index was in one of the lines or line above
-        // get start of the line and bounding rect of end index and union them
-        val lineStartIndex: Int = textLayoutResult.getLineStart(currentLine)
-        val startRect: Rect = textLayoutResult.getBoundingBox(lineStartIndex)
-
-        var endRect: Rect = textLayoutResult.getBoundingBox(endIndex)
-        if (endRect.width <= 0) {
-            endRect = textLayoutResult.getCursorRect(endIndex)
-        }
-        startRect.union(endRect)
-
-    } else {
-        // this is a intermediary line between the lines that start and end chars exist
-        // get full line as rect or divide it to equal parts for better reveal effect
-        val lineStartX: Float = textLayoutResult.getLineLeft(currentLine)
-        val lineStartY: Float = textLayoutResult.getLineTop(currentLine)
-        val lineEndX: Float = textLayoutResult.getLineRight(currentLine)
-        val lineEndY: Float = textLayoutResult.getLineBottom(currentLine)
-
-        Rect(
-            topLeft = Offset(lineStartX, lineStartY),
-            bottomRight = Offset(lineEndX, lineEndY)
-        )
     }
 }
 

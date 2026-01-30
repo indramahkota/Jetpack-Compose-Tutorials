@@ -106,9 +106,7 @@ fun Flow<String>.deltasToWordStableMarkdownTokensWithDelay(
     normalizeSpaces: Boolean = true,
     attachSingleTrailingSpace: Boolean = true,
     strictTripleBackticks: Boolean = true,
-    // If an opening delimiter doesn't close before newline, treat it as literal (but never emit it alone).
     failOpenUnclosedSpansAtNewline: Boolean = true,
-    // For rect stability, prefer false. If true, remainder is emitted as-is at end.
     flushRemainderOnComplete: Boolean = false,
     maxWordTokensPerFlush: Int = Int.MAX_VALUE,
     maxSpansPerFlush: Int = Int.MAX_VALUE,
@@ -116,8 +114,9 @@ fun Flow<String>.deltasToWordStableMarkdownTokensWithDelay(
 
     val sb = StringBuilder()
 
-    // Used to ensure we never emit "**" / "_" / "`" alone when fail-opening.
-    var pendingLiteralPrefix: String = ""
+    // Used to ensure we never emit "*", "**", "_", or "`" as standalone tokens
+    // when failing open on incomplete spans.
+    var pendingLiteralPrefix = ""
 
     fun normalizeIn(text: String): String {
         if (!normalizeSpaces) return text
@@ -127,7 +126,8 @@ fun Flow<String>.deltasToWordStableMarkdownTokensWithDelay(
     }
 
     suspend fun emitToken(raw: String) {
-        if (raw.isEmpty()) return
+        if (raw.isEmpty() && pendingLiteralPrefix.isEmpty()) return
+
         val token =
             if (pendingLiteralPrefix.isNotEmpty()) {
                 val merged = pendingLiteralPrefix + raw
@@ -139,9 +139,10 @@ fun Flow<String>.deltasToWordStableMarkdownTokensWithDelay(
         delay(delayMillis)
     }
 
-    // Longest-first.
-    // Include * and _ so _italic_ and *italic* are atomic.
     val pairedDelims = listOf("```", "**", "__", "~~", "`", "*", "_")
+
+    fun isDelimiterStartChar(c: Char): Boolean =
+        c == '*' || c == '_' || c == '~' || c == '`'
 
     fun StringBuilder.startsWithToken(token: String): Boolean {
         if (length < token.length) return false
@@ -166,21 +167,9 @@ fun Flow<String>.deltasToWordStableMarkdownTokensWithDelay(
         return -1
     }
 
-    fun isDelimiterStartChar(c: Char): Boolean =
-        c == '*' || c == '_' || c == '~' || c == '`'
-
     fun StringBuilder.findNextNewline(from: Int = 0): Int {
         for (i in from until length) if (this[i] == '\n') return i
         return -1
-    }
-
-    // Avoid treating "* " as emphasis (bullet), also "_ " as emphasis (rare, but safe).
-    fun StringBuilder.isLikelyEmphasis(delim: String): Boolean {
-        if ((delim == "*" || delim == "_") && length > delim.length) {
-            val next = this[delim.length]
-            if (next == ' ' || next == '\n') return false
-        }
-        return true
     }
 
     data class Out(val token: String, val isSpan: Boolean)
@@ -188,89 +177,62 @@ fun Flow<String>.deltasToWordStableMarkdownTokensWithDelay(
     fun StringBuilder.consumeOne(): Out? {
         if (isEmpty()) return null
 
-        // Newline atomic. Also: if we have a pending literal prefix and newline arrives,
-        // emit the prefix before newline so it doesn't get stuck.
         if (this[0] == '\n') {
             delete(0, 1)
-            return Out("\n", isSpan = false)
+            return Out("\n", false)
         }
 
-        // Spaces collapsed; typically you want them attached to previous word
         if (this[0] == ' ') {
             var i = 0
             while (i < length && this[i] == ' ') i++
             delete(0, i)
-            return Out(" ", isSpan = false)
+            return Out(" ", false)
         }
 
-        // If buffer starts with delimiter-start char, enforce span strictness.
         if (isDelimiterStartChar(this[0])) {
-
-            // Identify which delimiter it might be.
             val candidates = pairedDelims
                 .filter { it[0] == this[0] }
                 .sortedByDescending { it.length }
 
-            // If we can't even decide yet (e.g. "*" could become "**"), WAIT.
             val maxLen = candidates.maxOfOrNull { it.length } ?: 1
             if (length < maxLen) return null
 
             for (delim in candidates) {
-                if (length < delim.length) continue
-                if (!startsWithToken(delim)) continue
+                if (length < delim.length || !startsWithToken(delim)) continue
 
                 if (delim == "```" && !strictTripleBackticks) {
                     delete(0, 3)
-                    return Out("```", isSpan = false)
-                }
-
-                if ((delim == "*" || delim == "_") && !isLikelyEmphasis(delim)) {
-                    // treat literally, but don't emit it alone; store as pending prefix
-                    delete(0, 1)
-                    pendingLiteralPrefix += delim
-                    // Keep consuming; we didn't produce a token yet
-                    return null
+                    return Out("```", false)
                 }
 
                 val start = delim.length
+                val nl = if (failOpenUnclosedSpansAtNewline) findNextNewline(start) else -1
+                val searchEnd = if (nl == -1) length else nl
 
-                // We only allow the span to close within the same line if failOpenUnclosedSpansAtNewline is true.
-                val nl = if (failOpenUnclosedSpansAtNewline) findNextNewline(from = start) else -1
-                val searchEndExclusive = if (nl == -1) length else nl
-
-                val endIdx = indexOfToken(delim, start, endExclusive = searchEndExclusive)
+                val endIdx = indexOfToken(delim, start, searchEnd)
                 if (endIdx == -1) {
-                    // Not closed yet.
                     if (failOpenUnclosedSpansAtNewline && nl != -1) {
-                        // We hit a newline before closing: fail-open this delimiter as literal,
-                        // but NEVER emit it alone.
                         delete(0, delim.length)
                         pendingLiteralPrefix += delim
                         return null
                     }
-                    // Otherwise wait for more input
                     return null
                 }
 
-                val endExclusive = endIdx + delim.length
-                val span = substring(0, endExclusive)
-                delete(0, endExclusive)
-                return Out(span, isSpan = true)
+                val span = substring(0, endIdx + delim.length)
+                delete(0, endIdx + delim.length)
+                return Out(span, true)
             }
 
-            // Starts with delimiter-start char but doesn't match any known delimiter -> treat as literal prefix
-            val ch = this[0].toString()
             delete(0, 1)
-            pendingLiteralPrefix += ch
+            pendingLiteralPrefix += this[0]
             return null
         }
 
-        // Plain word token: stop before whitespace/newline OR delimiter-start char.
         var i = 0
         while (i < length) {
             val ch = this[i]
-            if (ch == '\n' || ch == ' ') break
-            if (isDelimiterStartChar(ch)) break
+            if (ch == '\n' || ch == ' ' || isDelimiterStartChar(ch)) break
             i++
         }
 
@@ -283,57 +245,40 @@ fun Flow<String>.deltasToWordStableMarkdownTokensWithDelay(
             var j = 0
             while (j < length && this[j] == ' ') j++
             delete(0, j)
-            return Out(word + " ", isSpan = false)
+            return Out(word + " ", false)
         }
 
-        return Out(word, isSpan = false)
+        return Out(word, false)
     }
 
     collect { delta ->
         if (delta.isEmpty()) return@collect
         sb.append(normalizeIn(delta).replace("\r\n", "\n").replace("\r", "\n"))
 
-        var wordBudget = maxWordTokensPerFlush
-        var spanBudget = maxSpansPerFlush
+        var wordsLeft = maxWordTokensPerFlush
+        var spansLeft = maxSpansPerFlush
 
         while (true) {
             val out = sb.consumeOne() ?: break
 
             if (out.isSpan) {
-                if (spanBudget <= 0) {
+                if (spansLeft-- <= 0) {
                     sb.insert(0, out.token)
                     break
                 }
-                spanBudget--
                 emitToken(out.token)
             } else {
-                if (wordBudget <= 0) {
+                if (wordsLeft-- <= 0) {
                     sb.insert(0, out.token)
                     break
                 }
-                wordBudget--
                 emitToken(out.token)
             }
-        }
-
-        // If we accumulated pending prefix and buffer begins with newline, push prefix before newline.
-        if (pendingLiteralPrefix.isNotEmpty() && sb.isNotEmpty() && sb[0] == '\n') {
-            emitToken("") // will emit pendingLiteralPrefix alone? No: emitToken merges; raw is empty -> skip.
-            // So instead force it:
-            emit(pendingLiteralPrefix)
-            pendingLiteralPrefix = ""
-            delay(delayMillis)
         }
     }
 
     if (flushRemainderOnComplete) {
-        if (pendingLiteralPrefix.isNotEmpty()) {
-            emit(pendingLiteralPrefix)
-            pendingLiteralPrefix = ""
-            delay(delayMillis)
-        }
-        if (sb.isNotEmpty()) {
-            emitToken(sb.toString())
-        }
+        if (pendingLiteralPrefix.isNotEmpty()) emit(pendingLiteralPrefix)
+        if (sb.isNotEmpty()) emit(sb.toString())
     }
 }
