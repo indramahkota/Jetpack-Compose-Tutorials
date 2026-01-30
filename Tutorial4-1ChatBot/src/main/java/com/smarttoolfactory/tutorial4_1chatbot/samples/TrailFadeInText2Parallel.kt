@@ -306,7 +306,9 @@ internal fun TrailFadeInTextParallelWithChannel(
                         )
                         delay(lingerInMillis)
                     } finally {
-                        rectList.remove(rectWithAnimation)
+                        if (!debug){
+                            rectList.remove(rectWithAnimation)
+                        }
                         jobsByRectId.remove(id)
                     }
                 }

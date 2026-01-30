@@ -35,18 +35,18 @@ import com.halilibo.richtext.ui.string.RichTextString
 import com.halilibo.richtext.ui.string.Text
 import com.smarttoolfactory.tutorial4_1chatbot.samples.CustomTable
 import com.smarttoolfactory.tutorial4_1chatbot.samples.rectUtils.LineSegmentation
-import com.smarttoolfactory.tutorial4_1chatbot.samples.rectUtils.calculateBoundingRectList
 import com.smarttoolfactory.tutorial4_1chatbot.samples.rectUtils.RectWithAnimation
+import com.smarttoolfactory.tutorial4_1chatbot.samples.rectUtils.calculateBoundingRectList
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlin.collections.forEachIndexed
 
 @Composable
 internal fun MarkdownComposer(
     markdown: String,
     debug: Boolean = false,
+    segmentation: LineSegmentation = LineSegmentation.None
 ) {
     val commonmarkAstNodeParser: CommonmarkAstNodeParser = remember {
         CommonmarkAstNodeParser()
@@ -86,6 +86,7 @@ internal fun MarkdownComposer(
                 } else if (astNode.type is AstParagraph) {
                     MarkdownFadeInRichText(
                         astNode = astNode,
+                        segmentation =segmentation,
                         debug = debug
                     )
                 }
@@ -148,7 +149,7 @@ internal fun RichTextScope.MarkdownFadeInRichText(
                         )
                         delay(lingerInMillis)
                     } finally {
-                        if (debug.not()){
+                        if (debug.not()) {
                             rectList.remove(rectWithAnimation)
                         }
                         jobsByRectId.remove(id)
@@ -188,8 +189,6 @@ internal fun RichTextScope.MarkdownFadeInRichText(
                     )
                 }
 
-//                println("onTextLayout: $text, startIndex: $startIndex, endIndex: $endIndex, ${newRects.size}")
-
                 startIndex = endIndex + 1
 
                 // Make them visible immediately
@@ -226,9 +225,8 @@ private fun ContentDrawScope.drawFadeInRects(
                 color = lerp(Color.Red, Color.Green, progress),
                 topLeft = topLeft,
                 size = rectSize,
-                style = Stroke(2.dp.toPx())
+                style = Stroke(width = 2.dp.toPx())
             )
         }
-
     }
 }
