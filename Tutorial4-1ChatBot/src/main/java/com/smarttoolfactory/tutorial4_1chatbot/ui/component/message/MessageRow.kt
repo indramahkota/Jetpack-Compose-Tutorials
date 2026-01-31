@@ -16,6 +16,7 @@ import androidx.compose.ui.unit.sp
 import com.halilibo.richtext.commonmark.Markdown
 import com.halilibo.richtext.ui.BasicRichText
 import com.halilibo.richtext.ui.RichTextStyle
+import com.smarttoolfactory.tutorial4_1chatbot.markdown.MarkdownComposer
 import com.smarttoolfactory.tutorial4_1chatbot.ui.Message
 import com.smarttoolfactory.tutorial4_1chatbot.ui.MessageStatus
 import com.smarttoolfactory.tutorial4_1chatbot.ui.Role
@@ -114,11 +115,21 @@ fun MessageRow(
                     ) {
                         Column(Modifier.padding(16.dp)) {
                             BasicRichText(
-                                modifier = Modifier.fillMaxWidth(),
-                                style = style
+                                modifier = Modifier,
+                                style = RichTextStyle.Default
                             ) {
-                                Markdown(message.text)
+                                MarkdownComposer(
+                                    markdown = message.text,
+                                    debug = false
+                                )
                             }
+
+//                            BasicRichText(
+//                                modifier = Modifier.fillMaxWidth(),
+//                                style = style
+//                            ) {
+//                                Markdown(message.text)
+//                            }
                             message.feedback?.let {
                                 MessageFeedbackRow(message = message)
                             }

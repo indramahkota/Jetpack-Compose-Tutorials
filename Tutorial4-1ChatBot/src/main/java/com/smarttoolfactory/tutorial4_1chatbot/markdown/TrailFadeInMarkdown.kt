@@ -123,17 +123,17 @@ internal fun MarkdownComposer(
 
                     val startIndexForNode = startIndexByNodeKey[nodeKey] ?: -1
 
-                    Box(modifier = Modifier.border(2.dp, Color.Magenta)) {
-                        MarkdownFadeInRichText(
-                            astNode = astNode,
-                            segmentation = segmentation,
-                            debug = debug,
-                            startIndex = startIndexForNode,
-                            onStartIndexChange = { newStart ->
-                                startIndexByNodeKey[nodeKey] = newStart
-                            }
-                        )
-                    }
+                    println("nodeKey: $nodeKey, startIndex: $startIndexForNode")
+
+                    MarkdownFadeInRichText(
+                        astNode = astNode,
+                        segmentation = segmentation,
+                        debug = debug,
+                        startIndex = startIndexForNode,
+                        onStartIndexChange = { newStart ->
+                            startIndexByNodeKey[nodeKey] = newStart
+                        }
+                    )
                 }
             }
         }
@@ -249,7 +249,7 @@ internal fun RichTextScope.MarkdownFadeInRichText(
                 val text = textLayout.layoutInput.text
                 val endIndex = text.lastIndex
 
-                if (endIndex > 0) {
+                if (endIndex >= 0) {
                     /**
                      * When markdown re-parses, this Text may shrink/expand.
                      * Clamp startIndex so calculateBoundingRectList never receives an invalid range.
@@ -269,6 +269,7 @@ internal fun RichTextScope.MarkdownFadeInRichText(
                             endIndex = endIndex
                         )
                     }
+                    println("onTextLayout safeStartIndex: $safeStartIndex, endIndex: $endIndex, text: $text")
                     onStartIndexChange(endIndex + 1)
 
                     // Make them visible immediately
