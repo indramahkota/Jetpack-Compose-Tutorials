@@ -1,8 +1,8 @@
 package com.smarttoolfactory.tutorial4_1chatbot.samples
 
-import android.widget.Toast
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,7 +16,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -31,7 +30,6 @@ import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -39,15 +37,13 @@ import androidx.compose.ui.unit.sp
 import com.halilibo.richtext.ui.BasicRichText
 import com.halilibo.richtext.ui.RichTextStyle
 import com.smarttoolfactory.tutorial4_1chatbot.markdown.MarkdownComposer
-import com.smarttoolfactory.tutorial4_1chatbot.samples.rectUtils.RectWithAnimatable
-import com.smarttoolfactory.tutorial4_1chatbot.samples.rectUtils.SpanSegmentation
-import com.smarttoolfactory.tutorial4_1chatbot.samples.rectUtils.calculateBoundingRectSpans
-import com.smarttoolfactory.tutorial4_1chatbot.samples.rectUtils.covers
+import com.smarttoolfactory.tutorial4_1chatbot.samples.rectUtils.LineSegmentation
+import com.smarttoolfactory.tutorial4_1chatbot.samples.rectUtils.RectWithAnimation
+import com.smarttoolfactory.tutorial4_1chatbot.samples.rectUtils.calculateBoundingRectList
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlin.collections.forEachIndexed
 
 @Preview
 @Composable
@@ -72,6 +68,10 @@ private fun TrailFadeInParallelWithCallbackPreview() {
         mutableStateOf(false)
     }
 
+    var completed3 by remember {
+        mutableStateOf(false)
+    }
+
     LaunchedEffect(startAnimation) {
         delay(1000)
         singleLongText.toWordFlow(
@@ -85,30 +85,59 @@ private fun TrailFadeInParallelWithCallbackPreview() {
 
     Column(modifier = Modifier.systemBarsPadding()) {
 
-        Text("TrailFadeInTextWithCallback", fontSize = 18.sp, color = if (completed1) Color.Green else Color.Red)
-        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            "TrailFadeInTextWithCallback",
+            fontSize = 18.sp,
+            color = if (completed1) Color.Green else Color.Red
+        )
         TrailFadeInTextWithCallback(
-//            text = chunkText,
-            text = singleLongText,
+            text = chunkText,
+//            text = singleLongText,
+
             modifier = Modifier.fillMaxWidth().height(160.dp),
-            onTailRectComplete = {
+            onCompleted = {
                 println("🔥 COMPLETED 1")
                 completed1 = true
             }
         )
 
-        Text("TrailFadeInTextWithCallback2", fontSize = 18.sp, color = if (completed2) Color.Green else Color.Red)
-        Spacer(modifier = Modifier.height(16.dp))
-        TrailFadeInTextWithCallback(
-//            text = chunkText,
-            text = singleLongText,
+        Text(
+            "TrailFadeInTextWithCallback2",
+            fontSize = 18.sp,
+            color = if (completed2) Color.Green else Color.Red
+        )
+
+        TrailFadeInTextWithCallback2(
+            text = chunkText,
+//            text = singleLongText,
             modifier = Modifier.fillMaxWidth().height(160.dp),
-            segmentation = SpanSegmentation.Words(),
-            onTailRectComplete = {
+            segmentation = LineSegmentation.Words(),
+            onCompleted = {
                 println("🔥🔥 COMPLETED 2")
                 completed2 = true
             }
         )
+
+        Text(
+            "MarkdownComposer",
+            fontSize = 18.sp,
+            color = if (completed3) Color.Green else Color.Red
+        )
+
+        BasicRichText(
+            modifier = Modifier,
+            style = RichTextStyle.Default
+        ) {
+            MarkdownComposer(
+                markdown = chunkText,
+//            markdown = singleLongText,
+                debug = true,
+                onCompleted = {
+                    println("🔥🔥🔥 COMPLETED 3")
+                    completed3 = true
+                }
+            )
+        }
         Spacer(modifier = Modifier.weight(1f))
 
         Button(
@@ -147,98 +176,34 @@ private fun TrailFadeInParallelWithCallbackPreview() {
 private fun TrailFadeInTextWithCallback(
     modifier: Modifier = Modifier,
     text: String,
-    start: Int = 0,
-    end: Int = text.lastIndex,
-    staggerMs: Long = 20L,
-    revealMs: Int = 1000,
-    lingerMs: Long = 80L,
     style: TextStyle = TextStyle.Default,
-    onTailRectComplete: (() -> Unit)? = null
+    delayInMillis: Long = 90L,
+    revealCoefficient: Float = 4f,
+    lingerInMillis: Long = 90L,
+    segmentation: LineSegmentation = LineSegmentation.None,
+    debug: Boolean = true,
+    onCompleted: () -> Unit
 ) {
 
-    var startIndex by remember { mutableIntStateOf(start) }
-    var endIndex by remember { mutableIntStateOf(end) }
-
-    val rectList = remember { mutableStateListOf<RectWithAnimatable>() }
-
-    val rectChannel = remember {
-        Channel<List<RectWithAnimatable>>(capacity = Channel.UNLIMITED)
+    var startIndex by remember {
+        mutableIntStateOf(0)
     }
 
-    val jobsById = remember { mutableStateMapOf<String, Job>() }
-
-    // Tail index as of most recent onTextLayout
-    var latestTailIndex by remember { mutableIntStateOf(-1) }
-
-    // last tail index we already notified for
-    var lastNotifiedTailIndex by remember { mutableIntStateOf(-1) }
-
-    LaunchedEffect(Unit) {
-        for (batch in rectChannel) {
-            batch.forEachIndexed { index, rectWithAnimatable: RectWithAnimatable ->
-                if (jobsById.containsKey(rectWithAnimatable.id)) return@forEachIndexed
-
-                val job = launch {
-                    delay(staggerMs * index)
-                    try {
-                        rectWithAnimatable.animatable.animateTo(
-                            targetValue = 1f,
-                            animationSpec = tween(revealMs, easing = LinearEasing)
-                        )
-                        delay(lingerMs)
-                    } finally {
-                        jobsById.remove(rectWithAnimatable.id)
-
-                        val tail = latestTailIndex
-
-                        if (tail >= 0 &&
-                            rectWithAnimatable.covers(tail) &&
-                            tail != lastNotifiedTailIndex
-                        ) {
-                            lastNotifiedTailIndex = tail
-                            onTailRectComplete?.invoke()
-                        }
-                    }
-                }
-
-                jobsById[rectWithAnimatable.id] = job
-            }
-        }
-    }
-
-    Text(
-        modifier = modifier
-            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-            .drawWithContent {
-                drawContent()
-                drawFadeInRects(rectList)
-            },
-        onTextLayout = { layout ->
-            endIndex = text.lastIndex
-            latestTailIndex = endIndex
-
-            val spans = calculateBoundingRectSpans(
-                textLayoutResult = layout,
-                startIndex = startIndex,
-                endIndex = endIndex
-            )
-
-            val newRects = spans.map { rectSpan ->
-                RectWithAnimatable(
-                    id = "${rectSpan.charStart}_${rectSpan.charEnd}_${rectSpan.line}_${rectSpan.rect.left}_${rectSpan.rect.top}_${rectSpan.rect.right}_${rectSpan.rect.bottom}",
-                    rect = rectSpan.rect,
-                    charStart = rectSpan.charStart,
-                    charEnd = rectSpan.charEnd
-                )
-            }
-
-            startIndex = endIndex + 1
-
-            rectList.addAll(newRects)
-            rectChannel.trySend(newRects)
-        },
+    TrailFadeInTextWithCallback(
+        modifier = modifier,
         text = text,
-        style = style
+        style = style,
+        delayInMillis = delayInMillis,
+        revealCoefficient = revealCoefficient,
+        lingerInMillis = lingerInMillis,
+        segmentation = segmentation,
+        debug = debug,
+        startIndex = startIndex,
+        onStartIndexChange = {
+            startIndex = it
+        },
+        onCompleted = onCompleted
+
     )
 }
 
@@ -246,128 +211,398 @@ private fun TrailFadeInTextWithCallback(
 private fun TrailFadeInTextWithCallback(
     modifier: Modifier = Modifier,
     text: String,
-    start: Int = 0,
-    end: Int = text.lastIndex,
-    staggerMs: Long = 20L,
-    revealMs: Int = 1000,
-    lingerMs: Long = 80L,
-    segmentation: SpanSegmentation = SpanSegmentation.Lines,
     style: TextStyle = TextStyle.Default,
-    onTailRectComplete: (() -> Unit)? = null
+    delayInMillis: Long = 90L,
+    revealCoefficient: Float = 4f,
+    lingerInMillis: Long = 90L,
+    segmentation: LineSegmentation = LineSegmentation.None,
+    debug: Boolean = true,
+    startIndex: Int,
+    onStartIndexChange: (Int) -> Unit,
+    onCompleted: () -> Unit
 ) {
-    var startIndex by remember { mutableIntStateOf(start) }
-    var endIndex by remember { mutableIntStateOf(end) }
+    val rectList = remember { mutableStateListOf<RectWithAnimation>() }
 
-    val rectList = remember { mutableStateListOf<RectWithAnimatable>() }
-
-    val rectChannel = remember {
-        Channel<List<RectWithAnimatable>>(capacity = Channel.UNLIMITED)
+    // Queue of rect batches coming from onTextLayout
+    val rectBatchChannel = remember {
+        Channel<List<RectWithAnimation>>(
+            capacity = Channel.UNLIMITED
+        )
     }
 
-    val jobsById = remember { mutableStateMapOf<String, Job>() }
+    // Track jobs so each rect starts once, and can optionally clean up.
+    val jobsByRectId = remember { mutableStateMapOf<String, Job>() }
 
-    // Batch completion tracking
-    var nextBatchId by remember { mutableLongStateOf(0L) }
-    val remainingByBatchId = remember { mutableStateMapOf<Long, Int>() }
-    val completedBatchIds = remember { mutableStateMapOf<Long, Boolean>() }
+    // ✅ Track how many rect animations are still running
+    var pendingRects by remember { mutableIntStateOf(0) }
 
+    // One long-lived "dispatcher" coroutine; does not restart on new layouts.
     LaunchedEffect(Unit) {
-        for (batch in rectChannel) {
-            // The batch is already created with a single batchId
-            batch.forEachIndexed { index, rectWithAnimatable ->
-                if (jobsById.containsKey(rectWithAnimatable.id)) return@forEachIndexed
+        for (batch in rectBatchChannel) {
+            batch.forEachIndexed { index, rectWithAnimation ->
+                // If you might enqueue the same instance again, guard it.
+                val id = rectWithAnimation.id
+                if (jobsByRectId.containsKey(id)) return@forEachIndexed
 
                 val job = launch {
-                    delay(staggerMs * index)
+                    // Optional stagger, keeps parallel but slightly cascaded.
+                    delay(delayInMillis * index)
+                    val duration = 1000
+//                    val duration = (revealCoefficient * rectWithAnimation.rect.width).toInt()
+
                     try {
-                        rectWithAnimatable.animatable.snapTo(0f)
-                        rectWithAnimatable.animatable.animateTo(
+                        rectWithAnimation.animatable.animateTo(
                             targetValue = 1f,
-                            animationSpec = tween(revealMs, easing = LinearEasing)
+                            animationSpec = tween(duration, easing = LinearEasing)
                         )
-                        delay(lingerMs)
+                        delay(lingerInMillis)
                     } finally {
-                        rectWithAnimatable.animatable.snapTo(1f)
+                        // ✅ Decrement pending when this rect's animation is finished
+                        pendingRects = (pendingRects - 1).coerceAtLeast(0)
 
-                        jobsById.remove(rectWithAnimatable.id)
+                        rectList.remove(rectWithAnimation)
 
-                        // Remove rect after animation (optional but typically desired)
-//                        rectList.remove(rectWithAnimatable)
-
-                        // ---- batch completion gate ----
-                        val bid = rectWithAnimatable.batchId
-                        val remaining = (remainingByBatchId[bid] ?: 0) - 1
-                        remainingByBatchId[bid] = remaining
-
-                        if (remaining <= 0 && completedBatchIds[bid] != true) {
-                            completedBatchIds[bid] = true
-                            onTailRectComplete?.invoke()
-                        }
+                        jobsByRectId.remove(id)
                     }
                 }
 
-                jobsById[rectWithAnimatable.id] = job
+                jobsByRectId[id] = job
             }
         }
     }
 
-    Text(
+    // ✅ When streaming is done and no animations are pending, mark completed once.
+    LaunchedEffect(pendingRects) {
+        println("😄 TrailFadeInText PENDING RECT: $pendingRects")
+        if (pendingRects == 0) {
+            onCompleted()
+        }
+    }
+
+    Box(
         modifier = modifier
             .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
             .drawWithContent {
                 drawContent()
-                drawFadeInRects(rectList)
-            },
-        onTextLayout = { layout ->
-            endIndex = text.lastIndex
-
-            val spans = calculateBoundingRectSpans(
-                textLayoutResult = layout,
-                startIndex = startIndex,
-                endIndex = endIndex,
-                segmentation = segmentation
-            )
-
-            if (spans.isEmpty()) {
-                // still advance startIndex so we don’t reprocess
-                startIndex = endIndex + 1
-                return@Text
+                drawFadeInRects(rectList, debug)
             }
+    ) {
+        Text(
+            text = text,
+            style = style,
+            onTextLayout = { textLayout ->
+                val text = textLayout.layoutInput.text
+                val endIndex = text.lastIndex
 
-            // Create a new batch id for THIS append
-            val batchId = nextBatchId++
-            remainingByBatchId[batchId] = spans.size
-            completedBatchIds.remove(batchId)
+                if (endIndex >= 0) {
+                    /**
+                     * When markdown re-parses, this Text may shrink/expand.
+                     * Clamp startIndex so calculateBoundingRectList never receives an invalid range.
+                     */
+                    val safeStartIndex = startIndex.coerceIn(0, endIndex + 1)
 
-            val newRects = spans.map { rectSpan ->
-                RectWithAnimatable(
-                    // Prefer stable IDs from indices; avoid rect coords if possible.
-                    // Keep yours if you want no other changes:
-                    id = "${rectSpan.charStart}_${rectSpan.charEnd}_${rectSpan.line}_${rectSpan.rect.left}_${rectSpan.rect.top}_${rectSpan.rect.right}_${rectSpan.rect.bottom}",
-                    rect = rectSpan.rect,
-                    charStart = rectSpan.charStart,
-                    charEnd = rectSpan.charEnd,
-                    batchId = batchId
-                )
+                    // ✅ If there's no new range, do NOTHING.
+                    // Do NOT call onCompleted here (that’s what was completing early).
+                    if (safeStartIndex <= endIndex) {
+                        val newRects = calculateBoundingRectList(
+                            textLayoutResult = textLayout,
+                            startIndex = safeStartIndex,
+                            endIndex = endIndex,
+                            segmentation = segmentation
+                        ).map { rect ->
+                            RectWithAnimation(
+                                id = "${safeStartIndex}_${endIndex}_${rect.top}_${rect.left}_${rect.right}_${rect.bottom}",
+                                rect = rect,
+                                startIndex = safeStartIndex,
+                                endIndex = endIndex
+                            )
+                        }
+
+                        println("onTextLayout safeStartIndex: $safeStartIndex, endIndex: $endIndex, text: $text")
+
+                        // ✅ advance progress (monotonic is enforced in caller)
+                        onStartIndexChange(endIndex + 1)
+
+                        // ✅ count these rects as pending BEFORE sending to channel
+                        pendingRects += newRects.size
+
+                        // Make them visible immediately
+                        rectList.addAll(newRects)
+
+                        // Kick off animations without causing cancellation of previous ones
+                        rectBatchChannel.trySend(newRects)
+                    }
+                }
             }
+        )
+    }
+}
 
-            startIndex = endIndex + 1
+@Composable
+private fun TrailFadeInTextWithCallback2(
+    modifier: Modifier = Modifier,
+    text: String,
+    style: TextStyle = TextStyle.Default,
+    delayInMillis: Long = 90L,
+    revealCoefficient: Float = 4f,
+    lingerInMillis: Long = 90L,
+    segmentation: LineSegmentation = LineSegmentation.None,
+    debug: Boolean = true,
+    onCompleted: () -> Unit
+) {
 
-            rectList.addAll(newRects)
-            rectChannel.trySend(newRects)
-        },
+    var startIndex by remember {
+        mutableIntStateOf(0)
+    }
+
+    TrailFadeInTextWithCallback2(
+        modifier = modifier,
         text = text,
-        style = style
+        style = style,
+        delayInMillis = delayInMillis,
+        revealCoefficient = revealCoefficient,
+        lingerInMillis = lingerInMillis,
+        segmentation = segmentation,
+        debug = debug,
+        startIndex = startIndex,
+        onStartIndexChange = {
+            startIndex = it
+        },
+        onCompleted = onCompleted
+
     )
 }
 
-private fun ContentDrawScope.drawFadeInRects(rectList: List<RectWithAnimatable>) {
+@Composable
+private fun TrailFadeInTextWithCallback2(
+    modifier: Modifier = Modifier,
+    text: String,
+    style: TextStyle = TextStyle.Default,
+    delayInMillis: Long = 90L,
+    revealCoefficient: Float = 4f,
+    lingerInMillis: Long = 90L,
+    segmentation: LineSegmentation = LineSegmentation.None,
+    debug: Boolean = true,
+    startIndex: Int,
+    onStartIndexChange: (Int) -> Unit,
+    onCompleted: () -> Unit
+) {
+    val rectList = remember { mutableStateListOf<RectWithAnimation>() }
+
+    // Queue of rect batches coming from onTextLayout
+    val rectBatchChannel = remember {
+        Channel<List<RectWithAnimation>>(
+            capacity = Channel.UNLIMITED
+        )
+    }
+
+    // Track jobs so each rect starts once, and can optionally clean up.
+    val jobsByRectId = remember { mutableStateMapOf<String, Job>() }
+
+    // ✅ Track how many rect animations are still running (MUST match scheduled jobs)
+    var pendingRects by remember { mutableIntStateOf(0) }
+
+    // ✅ Track whether the currently laid out text is fully revealed (no new range)
+    var fullyRevealed by remember { mutableStateOf(false) }
+
+    // ✅ Track latest laid out text length (source of truth is TextLayoutResult input text)
+    var lastLaidOutTextLen by remember { mutableIntStateOf(-1) }
+
+    // ✅ Fire onCompleted once per laid out length (re-arm if the laid out text grows later)
+    var completedFiredForLen by remember { mutableIntStateOf(-1) }
+
+    // One long-lived "dispatcher" coroutine; does not restart on new layouts.
+    LaunchedEffect(Unit) {
+        for (batch in rectBatchChannel) {
+
+            // ✅ Stagger only for rects that actually get scheduled
+            var scheduledIndex = 0
+
+            batch.forEach { rectWithAnimation ->
+                val id = rectWithAnimation.id
+                val alreadyScheduled = jobsByRectId.containsKey(id)
+
+                if (!alreadyScheduled) {
+                    // ✅ IMPORTANT: only count as pending if we actually schedule a job
+                    pendingRects += 1
+
+                    val myIndex = scheduledIndex
+                    scheduledIndex += 1
+
+                    val job = launch {
+                        // Optional stagger, keeps parallel but slightly cascaded.
+                        delay(delayInMillis * myIndex)
+                        val duration = 1000
+//                        val duration = (revealCoefficient * rectWithAnimation.rect.width).toInt()
+
+                        try {
+                            rectWithAnimation.animatable.animateTo(
+                                targetValue = 1f,
+                                animationSpec = tween(duration, easing = LinearEasing)
+                            )
+                            delay(lingerInMillis)
+                        } finally {
+                            pendingRects = (pendingRects - 1).coerceAtLeast(0)
+
+                            // Your v2 always removes; keep that behavior.
+                            rectList.remove(rectWithAnimation)
+
+                            jobsByRectId.remove(id)
+                        }
+                    }
+
+                    jobsByRectId[id] = job
+                }
+            }
+        }
+    }
+
+    // ✅ Mark completed when (fully revealed) AND (no pending animations),
+    // fired once per laid-out text length (so it works for streaming growth too).
+    LaunchedEffect(fullyRevealed, pendingRects, lastLaidOutTextLen) {
+        val shouldComplete =
+            fullyRevealed &&
+                    pendingRects == 0 &&
+                    lastLaidOutTextLen >= 0 &&
+                    completedFiredForLen != lastLaidOutTextLen
+
+        if (shouldComplete) {
+            // Optional debounce to avoid flapping due to relayout churn
+            delay(80)
+
+            val stillShouldComplete =
+                fullyRevealed &&
+                        pendingRects == 0 &&
+                        lastLaidOutTextLen >= 0 &&
+                        completedFiredForLen != lastLaidOutTextLen
+
+            if (stillShouldComplete) {
+                completedFiredForLen = lastLaidOutTextLen
+                onCompleted()
+            }
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+            .drawWithContent {
+                drawContent()
+                drawFadeInRects(rectList, debug)
+            }
+    ) {
+        Text(
+            text = text,
+            style = style,
+            onTextLayout = { textLayout ->
+                val text = textLayout.layoutInput.text
+                val endIndex = text.lastIndex
+
+                if (endIndex >= 0) {
+                    // ✅ track laid out text length (source of truth)
+                    lastLaidOutTextLen = text.length
+
+                    /**
+                     * When markdown re-parses, this Text may shrink/expand.
+                     * Clamp startIndex so calculateBoundingRectList never receives an invalid range.
+                     */
+                    val safeStartIndex = startIndex.coerceIn(0, endIndex + 1)
+
+                    // ✅ update fully revealed state for completion logic (but DO NOT call onCompleted here)
+                    fullyRevealed = safeStartIndex > endIndex
+
+                    // ✅ If there's a new range, build rects; otherwise do nothing.
+                    val hasNewRange = safeStartIndex <= endIndex
+
+                    if (hasNewRange) {
+                        val newRects = calculateBoundingRectList(
+                            textLayoutResult = textLayout,
+                            startIndex = safeStartIndex,
+                            endIndex = endIndex,
+                            segmentation = segmentation
+                        ).map { rect ->
+                            RectWithAnimation(
+                                id = "${safeStartIndex}_${endIndex}_${rect.top}_${rect.left}_${rect.right}_${rect.bottom}",
+                                rect = rect,
+                                startIndex = safeStartIndex,
+                                endIndex = endIndex
+                            )
+                        }
+
+                        // ✅ Dedupe BEFORE adding/sending, otherwise you'll create rects that never get jobs
+                        // because jobs are keyed by id.
+                        val existingRectIds = rectList.asSequence().map { it.id }.toHashSet()
+                        val filtered =
+                            newRects.filter { it.id !in jobsByRectId && it.id !in existingRectIds }
+
+                        val hasRectsToAnimate = filtered.isNotEmpty()
+
+                        if (hasRectsToAnimate) {
+                            println(
+                                "onTextLayout safeStartIndex: $safeStartIndex, " +
+                                        "endIndex: $endIndex, added=${filtered.size}"
+                            )
+
+                            // ✅ advance progress (monotonic is enforced in caller)
+                            onStartIndexChange(endIndex + 1)
+
+                            // Make them visible immediately
+                            rectList.addAll(filtered)
+
+                            // Kick off animations without causing cancellation of previous ones
+                            rectBatchChannel.trySend(filtered)
+                        }
+                    }
+                }
+            }
+        )
+    }
+}
+
+private fun ContentDrawScope.drawFadeInRects(
+    rectList: List<RectWithAnimation>,
+    debug: Boolean = false
+) {
     rectList.forEachIndexed { _, rectWithAnimation ->
 
         val progress = rectWithAnimation.animatable.value
         val rect = rectWithAnimation.rect
         val topLeft = rect.topLeft
         val rectSize = rect.size
+
+        val rectWidth = rectSize.width
+        val rectHeight = rectSize.height
+        val posX = topLeft.x + progress * rectWidth
+        val animatedWidth = (1 - progress) * rectWidth
+
+        /*
+            These draw rect only work if Animatables are animated sequentially
+            Keep rects in queue at 0 progress are not drawn with rects
+            draw only one with changing alpha or dimensions with color or brush
+         */
+
+//        val brush = Brush.linearGradient(
+//            colors = listOf(
+//                Color.Red.copy((-0.25f + 1f - progress).coerceIn(0f, 1f)),
+//                Color.Red.copy(1f - progress),
+//            ),
+//            start = rect.topLeft,
+//            end = rect.bottomRight,
+//        )
+//
+//        drawRect(
+//            brush = brush,
+//            topLeft = topLeft,
+//            size = rectSize,
+//            blendMode = BlendMode.DstOut
+//        )
+
+//        drawRect(
+//            color = Color.Red.copy(1 - progress),
+//            topLeft = Offset(posX, topLeft.y),
+//            size = Size(animatedWidth, rectHeight),
+//            blendMode = BlendMode.DstOut
+//        )
 
         drawRect(
             color = Color.Red.copy(1 - progress),
@@ -377,11 +612,15 @@ private fun ContentDrawScope.drawFadeInRects(rectList: List<RectWithAnimatable>)
         )
 
         // For Debugging
-        drawRect(
-            color = lerp(Color.Red, Color.Green, progress),
-            topLeft = topLeft,
-            size = rectSize,
-            style = Stroke(2.dp.toPx())
-        )
+        if (debug) {
+            drawRect(
+                color = lerp(Color.Red, Color.Green, progress),
+                topLeft = topLeft,
+                size = rectSize,
+                style = Stroke(2.dp.toPx())
+            )
+        }
+
     }
 }
+

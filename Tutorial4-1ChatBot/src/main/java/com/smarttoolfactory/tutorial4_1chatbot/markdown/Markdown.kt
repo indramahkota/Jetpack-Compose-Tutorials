@@ -114,7 +114,7 @@ internal fun MarkdownComposer(
 
                     val startIndexForNode = startIndexByNodeKey[nodeKey] ?: -1
 
-                    println("nodeKey: $nodeKey, startIndex: $startIndexForNode")
+                    println("✅ nodeKey: $nodeKey, startIndex: $startIndexForNode")
 
                     MarkdownFadeInRichText(
                         astNode = astNode,
