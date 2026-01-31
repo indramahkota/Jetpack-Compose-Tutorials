@@ -35,7 +35,7 @@ fun MarkdownTokenStreamPreview() {
     // Longer, more varied simulated SSE deltas.
     // These intentionally split paired markdown delimiters so your tokenizer must WAIT until closed.
     val deltas = remember {
-        markdownDeltaTestFlow2()
+        markdownDeltaTestFlow3()
     }
 
     // Build the visible text incrementally by appending emitted chunks.
@@ -170,6 +170,15 @@ private fun markdownDeltaTestFlow(): Flow<String> = flowOf(
     "End.\n"
 )
 
+fun markdownDeltaTestFlow3(): Flow<String> = flow {
+    val deltas = listOf(
+        "`inline", "Code()", "`.\n\n",
+        "Mixed nesting should be atomic:\n",
+        "- ", "**bold with _ita", "lic inside_**", "\n",
+    )
+
+    for (d in deltas) emit(d)
+}
 
 /**
  * Emits the given markdown as "SSE-like" deltas that intentionally split inside markdown constructs:
@@ -193,7 +202,6 @@ fun markdownDeltaTestFlow2(): Flow<String> = flow {
         "_ita", "lic-alt_", ", ",
         "~~str", "ike~~", ", and ",
         "`inline", "Code()", "`.\n\n",
-
         "Mixed nesting should be atomic:\n",
         "- ", "**bold with _ita", "lic inside_**", "\n",
         "- ", "__bold with *ita", "lic inside*__", "\n",
@@ -274,92 +282,92 @@ fun markdownDeltaTestFlow2(): Flow<String> = flow {
 }
 
 val markdownTextString = """
-# Markdown Rect Trim & Inner-Range Test
-
-This paragraph contains **bold**, __bold-alt__, *italic*, _italic-alt_, ~~strike~~, and `inlineCode()`.
-
+//# Markdown Rect Trim & Inner-Range Test
+//
+//This paragraph contains **bold**, __bold-alt__, *italic*, _italic-alt_, ~~strike~~, and `inlineCode()`.
+//
 Mixed nesting should be atomic:
 - **bold with _italic inside_**
-- __bold with *italic inside*__
-- **bold with `inline code` inside**
-- *italic with **bold** inside*
-
-Punctuation adjacency:
-**bold,** _italic._ ~~strike!~~ `code?`
-
-Whitespace padding:
- ** bold with spaces ** 
-__   bold-alt with spaces   __
-
----
-
-## Incomplete spans (must not emit partial rects)
-
-You should not see **part
-You should not see __part
-You should not see ~~par
-You should not see `par
-These should fail-open at newline but never emit bare delimiters.
-
----
-
-## Lists
-
-- First bullet with **bold**
-- Second bullet with _italic_
-- Third bullet with ~~strike~~ and `code`
-- Bullet with **nested _italic_ and `code`**
-
-1. Ordered item with **bold**
-2. Ordered item with _italic_
-3. Ordered item with `code`
-
----
-
-## Blockquotes
-
-> Blockquote with **bold**
-> Blockquote with _italic_
-> Blockquote with `code`
-
----
-
-## Links & Images (inner text only)
-
-A link: [Click **here**](https://example.com)
-An image: ![Alt **text**](https://example.com/image.png)
-
-Nested:
-[**Bold link _text_**](https://example.com)
-
----
-
-## Tables (expect reflow)
-
-| Feature | Example | Notes |
-|--------:|:--------|:------|
-| Bold    | **Hello** | waits until closed |
-| Italic  | _World_ | safe streaming |
-| Strike  | ~~Done~~ | safe streaming |
-| Code    | `val x = 1` | waits until closing backtick |
-| Mixed   | **A _B_ C** | nested emphasis |
-
----
-
-## Headings with inline spans
-
-### Heading with **bold**
-#### Heading with _italic_ and `code`
-##### Heading with **nested _italic_**
-
----
-
-## Final edge cases
-
-Parentheses: (**bold**)
-Quotes: "**bold**"
-Underscores in words should NOT be emphasis: foo_bar_baz
-
-End.
+//- __bold with *italic inside*__
+//- **bold with `inline code` inside**
+//- *italic with **bold** inside*
+//
+//Punctuation adjacency:
+//**bold,** _italic._ ~~strike!~~ `code?`
+//
+//Whitespace padding:
+// ** bold with spaces ** 
+//__   bold-alt with spaces   __
+//
+//---
+//
+//## Incomplete spans (must not emit partial rects)
+//
+//You should not see **part
+//You should not see __part
+//You should not see ~~par
+//You should not see `par
+//These should fail-open at newline but never emit bare delimiters.
+//
+//---
+//
+//## Lists
+//
+//- First bullet with **bold**
+//- Second bullet with _italic_
+//- Third bullet with ~~strike~~ and `code`
+//- Bullet with **nested _italic_ and `code`**
+//
+//1. Ordered item with **bold**
+//2. Ordered item with _italic_
+//3. Ordered item with `code`
+//
+//---
+//
+//## Blockquotes
+//
+//> Blockquote with **bold**
+//> Blockquote with _italic_
+//> Blockquote with `code`
+//
+//---
+//
+//## Links & Images (inner text only)
+//
+//A link: [Click **here**](https://example.com)
+//An image: ![Alt **text**](https://example.com/image.png)
+//
+//Nested:
+//[**Bold link _text_**](https://example.com)
+//
+//---
+//
+//## Tables (expect reflow)
+//
+//| Feature | Example | Notes |
+//|--------:|:--------|:------|
+//| Bold    | **Hello** | waits until closed |
+//| Italic  | _World_ | safe streaming |
+//| Strike  | ~~Done~~ | safe streaming |
+//| Code    | `val x = 1` | waits until closing backtick |
+//| Mixed   | **A _B_ C** | nested emphasis |
+//
+//---
+//
+//## Headings with inline spans
+//
+//### Heading with **bold**
+//#### Heading with _italic_ and `code`
+//##### Heading with **nested _italic_**
+//
+//---
+//
+//## Final edge cases
+//
+//Parentheses: (**bold**)
+//Quotes: "**bold**"
+//Underscores in words should NOT be emphasis: foo_bar_baz
+//
+//End.
 
 """.trimIndent()
