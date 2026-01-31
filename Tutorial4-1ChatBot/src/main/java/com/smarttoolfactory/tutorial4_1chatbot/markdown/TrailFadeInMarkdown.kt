@@ -140,11 +140,11 @@ internal fun RichTextScope.MarkdownFadeInRichText(
     // 🔥🔥 TODO This LaunchedEffect doesn't get called initially but it can break
     // if it gets called and calls complete without any guard
     LaunchedEffect(pendingRects) {
-        println("😹 Markdown PENDING RECT: $pendingRects")
+//        println("😹 Markdown PENDING RECT: $pendingRects")
 
         if (pendingRects == 0) {
             onCompleted()
-            println("😹 Markdown COMPLETED")
+//            println("😹 Markdown COMPLETED")
         }
     }
 
