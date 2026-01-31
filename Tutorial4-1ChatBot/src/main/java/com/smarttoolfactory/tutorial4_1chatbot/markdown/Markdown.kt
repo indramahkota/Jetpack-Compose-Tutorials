@@ -59,8 +59,6 @@ private fun AstNode.stablePathKey(): String {
 internal fun MarkdownComposer(
     markdown: String,
     debug: Boolean = false,
-    animate: Boolean = false,
-    useFirst: Boolean = true,
     segmentation: LineSegmentation = LineSegmentation.None,
     onCompleted: () -> Unit = {}
 ) {
@@ -117,29 +115,16 @@ internal fun MarkdownComposer(
 
 //                    println("✅ nodeKey: $nodeKey, startIndex: $startIndexForNode")
 
-                   if (useFirst){
-                       MarkdownFadeInRichText(
-                           astNode = astNode,
-                           segmentation = segmentation,
-                           debug = debug,
-                           startIndex = startIndexForNode,
-                           onStartIndexChange = { newStart ->
-                               startIndexByNodeKey[nodeKey] = newStart
-                           },
-                           onCompleted = onCompleted
-                       )
-                   }else {
-                       MarkdownFadeInRichText2(
-                           astNode = astNode,
-                           segmentation = segmentation,
-                           debug = debug,
-                           startIndex = startIndexForNode,
-                           onStartIndexChange = { newStart ->
-                               startIndexByNodeKey[nodeKey] = newStart
-                           },
-                           onCompleted = onCompleted
-                       )
-                   }
+                    MarkdownFadeInRichText(
+                        astNode = astNode,
+                        segmentation = segmentation,
+                        debug = debug,
+                        startIndex = startIndexForNode,
+                        onStartIndexChange = { newStart ->
+                            startIndexByNodeKey[nodeKey] = newStart
+                        },
+                        onCompleted = onCompleted
+                    )
                 }
             }
         }

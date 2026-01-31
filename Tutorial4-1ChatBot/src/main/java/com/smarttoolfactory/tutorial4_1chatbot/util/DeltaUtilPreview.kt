@@ -37,7 +37,7 @@ fun MarkdownTokenStreamPreview() {
     // Longer, more varied simulated SSE deltas.
     // These intentionally split paired markdown delimiters so your tokenizer must WAIT until closed.
     val deltas = remember {
-        markdownDeltaTestFlow()
+        markdownDeltaTestFlow2()
     }
 
     // Build the visible text incrementally by appending emitted chunks.
@@ -100,13 +100,6 @@ fun MarkdownTokenStreamPreview() {
                     }
                 )
             }
-
-//        BasicRichText(
-//            modifier = Modifier,
-//            style = RichTextStyle.Default
-//        ) {
-//            Markdown(rendered)
-//        }
         }
     }
 }
