@@ -64,6 +64,7 @@ import com.halilibo.richtext.ui.string.InlineContent
 import com.halilibo.richtext.ui.string.RichTextString
 import com.halilibo.richtext.ui.string.Text
 import com.halilibo.richtext.ui.string.withFormat
+import com.smarttoolfactory.tutorial4_1chatbot.markdown.MarkdownFadeInRichText
 
 @Preview
 @Composable
@@ -335,16 +336,16 @@ internal fun RichTextScope.CustomTable(
                     ) {
                         if (cellNode != null) {
 
-//                            MarkdownFadeInRichText(
-//                                modifier = Modifier
-//                                    .matchParentSize(),
-//                                astNode = cellNode
-//                            )
-                            MarkdownRichText(
+                            MarkdownFadeInRichText(
                                 modifier = Modifier
                                     .matchParentSize(),
                                 astNode = cellNode
                             )
+//                            MarkdownRichText(
+//                                modifier = Modifier
+//                                    .matchParentSize(),
+//                                astNode = cellNode
+//                            )
                         }
                     }
                 }

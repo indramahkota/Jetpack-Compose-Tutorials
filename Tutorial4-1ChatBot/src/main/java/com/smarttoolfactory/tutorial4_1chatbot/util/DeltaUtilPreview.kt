@@ -46,12 +46,12 @@ fun MarkdownTokenStreamPreview() {
         rendered = ""
 
         deltas
-//            .deltasToWordStableMarkdownTokensWithDelay(
-//                delayMillis = 60
-//            )
-            .deltasToMarkdownTokensWithDelay(
+            .deltasToWordStableMarkdownTokensWithDelay(
                 delayMillis = 60
             )
+//            .deltasToMarkdownTokensWithDelay(
+//                delayMillis = 60
+//            )
             .collect {
                 println("Text: $it")
                 rendered += it

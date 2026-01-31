@@ -1,8 +1,8 @@
 package com.smarttoolfactory.tutorial4_1chatbot.markdown
 
-import android.R.attr.end
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -42,10 +42,34 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+/**
+ * Build a stable key for the current node based on its position in the AST tree.
+ * This survives markdown re-parses as long as this paragraph's relative position doesn't change.
+ */
+private fun AstNode.stablePathKey(): String {
+    val indices = ArrayDeque<Int>()
+    var current: AstNode? = this
+
+    while (current != null) {
+        var i = 0
+        var prev = current.links.previous
+        while (prev != null) {
+            i++
+            prev = prev.links.previous
+        }
+        indices.addFirst(i)
+        current = current.links.parent
+    }
+
+    val typeName = this.type::class.simpleName ?: "node"
+    return "$typeName:${indices.joinToString(separator = "/")}"
+}
+
 @Composable
 internal fun MarkdownComposer(
     markdown: String,
     debug: Boolean = false,
+    animate: Boolean = false,
     segmentation: LineSegmentation = LineSegmentation.None
 ) {
     val commonmarkAstNodeParser: CommonmarkAstNodeParser = remember {
@@ -58,6 +82,16 @@ internal fun MarkdownComposer(
         key2 = markdown
     ) {
         value = commonmarkAstNodeParser.parse(markdown)
+    }
+
+    /**
+     * Persist startIndex OUTSIDE the node composable so it won't reset to 0 when:
+     * - the markdown becomes valid (e.g. ** closes),
+     * - AST is rebuilt,
+     * - paragraph Text() composable gets recreated.
+     */
+    val startIndexByNodeKey = remember(markdown) {
+        mutableStateMapOf<String, Int>()
     }
 
     val tableBlockNodeComposer: AstBlockNodeComposer = remember {
@@ -84,11 +118,22 @@ internal fun MarkdownComposer(
                 if (astNode.type is AstTableRoot) {
                     CustomTable(tableRoot = astNode)
                 } else if (astNode.type is AstParagraph) {
-                    MarkdownFadeInRichText(
-                        astNode = astNode,
-                        segmentation =segmentation,
-                        debug = debug
-                    )
+
+                    val nodeKey = remember(astNode) { astNode.stablePathKey() }
+
+                    val startIndexForNode = startIndexByNodeKey[nodeKey] ?: -1
+
+                    Box(modifier = Modifier.border(2.dp, Color.Magenta)) {
+                        MarkdownFadeInRichText(
+                            astNode = astNode,
+                            segmentation = segmentation,
+                            debug = debug,
+                            startIndex = startIndexForNode,
+                            onStartIndexChange = { newStart ->
+                                startIndexByNodeKey[nodeKey] = newStart
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -109,12 +154,42 @@ internal fun RichTextScope.MarkdownFadeInRichText(
     segmentation: LineSegmentation = LineSegmentation.None,
     debug: Boolean = true
 ) {
+
+    var startIndex by remember {
+        mutableIntStateOf(0)
+    }
+
+    MarkdownFadeInRichText(
+        astNode = astNode,
+        modifier = modifier,
+        delayInMillis = delayInMillis,
+        revealCoefficient = revealCoefficient,
+        lingerInMillis = lingerInMillis,
+        segmentation = segmentation,
+        debug = debug,
+        startIndex = startIndex,
+        onStartIndexChange = {
+            startIndex = it
+        }
+    )
+}
+
+@Composable
+internal fun RichTextScope.MarkdownFadeInRichText(
+    astNode: AstNode,
+    modifier: Modifier = Modifier,
+    delayInMillis: Long = 90L,
+    revealCoefficient: Float = 4f,
+    lingerInMillis: Long = 90L,
+    segmentation: LineSegmentation = LineSegmentation.None,
+    debug: Boolean = true,
+    startIndex: Int,
+    onStartIndexChange: (Int) -> Unit
+) {
     // Assume that only RichText nodes reside below this level.
     val richText: RichTextString = remember(astNode) {
         computeRichTextString(astNode)
     }
-
-    var startIndex by remember { mutableIntStateOf(0) }
 
     val rectList = remember { mutableStateListOf<RectWithAnimation>() }
 
@@ -172,30 +247,36 @@ internal fun RichTextScope.MarkdownFadeInRichText(
             modifier = modifier,
             onTextLayout = { textLayout ->
                 val text = textLayout.layoutInput.text
-
                 val endIndex = text.lastIndex
 
-                val newRects = calculateBoundingRectList(
-                    textLayoutResult = textLayout,
-                    startIndex = startIndex,
-                    endIndex = endIndex,
-                    segmentation = segmentation
-                ).map { rect ->
-                    RectWithAnimation(
-                        id = "${startIndex}_${endIndex}_${rect.top}_${rect.left}_${rect.right}_${rect.bottom}",
-                        rect = rect,
-                        startIndex = startIndex,
-                        endIndex = end
-                    )
+                if (endIndex > 0) {
+                    /**
+                     * When markdown re-parses, this Text may shrink/expand.
+                     * Clamp startIndex so calculateBoundingRectList never receives an invalid range.
+                     */
+                    val safeStartIndex = startIndex.coerceIn(0, endIndex + 1)
+
+                    val newRects = calculateBoundingRectList(
+                        textLayoutResult = textLayout,
+                        startIndex = safeStartIndex,
+                        endIndex = endIndex,
+                        segmentation = segmentation
+                    ).map { rect ->
+                        RectWithAnimation(
+                            id = "${safeStartIndex}_${endIndex}_${rect.top}_${rect.left}_${rect.right}_${rect.bottom}",
+                            rect = rect,
+                            startIndex = safeStartIndex,
+                            endIndex = endIndex
+                        )
+                    }
+                    onStartIndexChange(endIndex + 1)
+
+                    // Make them visible immediately
+                    rectList.addAll(newRects)
+
+                    // Kick off animations without causing cancellation of previous ones
+                    rectBatchChannel.trySend(newRects)
                 }
-
-                startIndex = endIndex + 1
-
-                // Make them visible immediately
-                rectList.addAll(newRects)
-
-                // Kick off animations without causing cancellation of previous ones
-                rectBatchChannel.trySend(newRects)
             }
         )
     }
