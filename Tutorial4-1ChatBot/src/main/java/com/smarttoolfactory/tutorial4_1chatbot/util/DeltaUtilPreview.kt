@@ -37,7 +37,7 @@ fun MarkdownTokenStreamPreview() {
     // Longer, more varied simulated SSE deltas.
     // These intentionally split paired markdown delimiters so your tokenizer must WAIT until closed.
     val deltas = remember {
-        markdownDeltaTestFlow3()
+        markdownDeltaTestFlow()
     }
 
     // Build the visible text incrementally by appending emitted chunks.
@@ -77,16 +77,15 @@ fun MarkdownTokenStreamPreview() {
             }
         ) {
 
-//            TrailFadeInTextParallelWithChannel(
-//                text = rendered,
-//                debug = true
-//            )
-
             var completed1 by remember {
                 mutableStateOf(false)
             }
 
-            Text("TrailFadeInTextWithCallback", fontSize = 18.sp, color = if (completed1) Color.Green else Color.Red)
+            Text(
+                text = "TrailFadeInTextWithCallback",
+                fontSize = 18.sp,
+                color = if (completed1) Color.Green else Color.Red
+            )
 
 
             BasicRichText(
