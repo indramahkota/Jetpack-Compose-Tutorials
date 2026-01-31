@@ -185,7 +185,7 @@ internal fun RichTextScope.MarkdownFadeInRichText(
                             )
                         }
 
-                        println("onTextLayout safeStartIndex: $safeStartIndex, endIndex: $endIndex, text: $text")
+//                        println("onTextLayout safeStartIndex: $safeStartIndex, endIndex: $endIndex, text: $text")
 
                         // ✅ advance progress (monotonic is enforced in caller)
                         onStartIndexChange(endIndex + 1)
