@@ -9,6 +9,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -78,7 +79,6 @@ internal fun RichTextScope.MarkdownFadeInRichText(
     debug: Boolean = true,
     startIndex: Int,
     onStartIndexChange: (Int) -> Unit,
-    streamCompleted: Boolean = false,
     onCompleted: () -> Unit
 ) {
     // Assume that only RichText nodes reside below this level.
@@ -199,7 +199,6 @@ internal fun RichTextScope.MarkdownFadeInRichText(
         )
     }
 }
-
 
 private fun ContentDrawScope.drawFadeInRects(
     rectList: List<RectWithAnimation>,

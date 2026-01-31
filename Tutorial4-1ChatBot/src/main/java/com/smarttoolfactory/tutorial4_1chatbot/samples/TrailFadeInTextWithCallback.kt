@@ -84,33 +84,29 @@ private fun TrailFadeInParallelWithCallbackPreview() {
     }
 
     Column(modifier = Modifier.systemBarsPadding()) {
-        val context = LocalContext.current
 
         Text("TrailFadeInTextWithCallback", fontSize = 18.sp, color = if (completed1) Color.Green else Color.Red)
         Spacer(modifier = Modifier.height(16.dp))
-        BasicRichText(
-            modifier = Modifier,
-            style = RichTextStyle.Default
-        ) {
-            MarkdownComposer(
-                markdown = chunkText,
-                debug = true,
-                onCompleted = {
-                    completed1 = true
-                }
-            )
-        }
+        TrailFadeInTextWithCallback(
+//            text = chunkText,
+            text = singleLongText,
+            modifier = Modifier.fillMaxWidth().height(160.dp),
+            onTailRectComplete = {
+                println("🔥 COMPLETED 1")
+                completed1 = true
+            }
+        )
 
         Text("TrailFadeInTextWithCallback2", fontSize = 18.sp, color = if (completed2) Color.Green else Color.Red)
         Spacer(modifier = Modifier.height(16.dp))
         TrailFadeInTextWithCallback(
-            text = chunkText,
-//            text = singleLongText,
+//            text = chunkText,
+            text = singleLongText,
             modifier = Modifier.fillMaxWidth().height(160.dp),
             segmentation = SpanSegmentation.Words(),
             onTailRectComplete = {
+                println("🔥🔥 COMPLETED 2")
                 completed2 = true
-                Toast.makeText(context, "onBatchComplete2", Toast.LENGTH_SHORT).show()
             }
         )
         Spacer(modifier = Modifier.weight(1f))
