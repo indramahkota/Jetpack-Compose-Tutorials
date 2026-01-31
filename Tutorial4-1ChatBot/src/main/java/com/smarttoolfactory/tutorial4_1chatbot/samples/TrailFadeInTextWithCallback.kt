@@ -36,6 +36,9 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.halilibo.richtext.ui.BasicRichText
+import com.halilibo.richtext.ui.RichTextStyle
+import com.smarttoolfactory.tutorial4_1chatbot.markdown.MarkdownComposer
 import com.smarttoolfactory.tutorial4_1chatbot.samples.rectUtils.RectWithAnimatable
 import com.smarttoolfactory.tutorial4_1chatbot.samples.rectUtils.SpanSegmentation
 import com.smarttoolfactory.tutorial4_1chatbot.samples.rectUtils.calculateBoundingRectSpans
@@ -85,21 +88,24 @@ private fun TrailFadeInParallelWithCallbackPreview() {
 
         Text("TrailFadeInTextWithCallback", fontSize = 18.sp, color = if (completed1) Color.Green else Color.Red)
         Spacer(modifier = Modifier.height(16.dp))
-        TrailFadeInTextWithCallback(
-//            text = chunkText,
-            text = singleLongText,
-            modifier = Modifier.fillMaxWidth().height(160.dp),
-            onTailRectComplete = {
-                completed1 = true
-                Toast.makeText(context, "onTailRectComplete", Toast.LENGTH_SHORT).show()
-            }
-        )
+        BasicRichText(
+            modifier = Modifier,
+            style = RichTextStyle.Default
+        ) {
+            MarkdownComposer(
+                markdown = chunkText,
+                debug = true,
+                onCompleted = {
+                    completed1 = true
+                }
+            )
+        }
 
         Text("TrailFadeInTextWithCallback2", fontSize = 18.sp, color = if (completed2) Color.Green else Color.Red)
         Spacer(modifier = Modifier.height(16.dp))
         TrailFadeInTextWithCallback(
-//            text = chunkText,
-            text = singleLongText,
+            text = chunkText,
+//            text = singleLongText,
             modifier = Modifier.fillMaxWidth().height(160.dp),
             segmentation = SpanSegmentation.Words(),
             onTailRectComplete = {

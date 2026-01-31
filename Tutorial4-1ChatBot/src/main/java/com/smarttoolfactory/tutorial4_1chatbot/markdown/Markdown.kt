@@ -1,14 +1,10 @@
 package com.smarttoolfactory.tutorial4_1chatbot.markdown
 
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.halilibo.richtext.commonmark.CommonmarkAstNodeParser
@@ -32,7 +28,6 @@ import com.halilibo.richtext.markdown.node.AstText
 import com.halilibo.richtext.ui.RichTextScope
 import com.halilibo.richtext.ui.string.InlineContent
 import com.halilibo.richtext.ui.string.RichTextString
-import com.halilibo.richtext.ui.string.Text
 import com.halilibo.richtext.ui.string.withFormat
 import com.smarttoolfactory.tutorial4_1chatbot.samples.CustomTable
 import com.smarttoolfactory.tutorial4_1chatbot.samples.rectUtils.LineSegmentation
@@ -65,7 +60,8 @@ internal fun MarkdownComposer(
     markdown: String,
     debug: Boolean = false,
     animate: Boolean = false,
-    segmentation: LineSegmentation = LineSegmentation.None
+    segmentation: LineSegmentation = LineSegmentation.None,
+    onCompleted: () -> Unit = {}
 ) {
     val commonmarkAstNodeParser: CommonmarkAstNodeParser = remember {
         CommonmarkAstNodeParser()
@@ -127,7 +123,8 @@ internal fun MarkdownComposer(
                         startIndex = startIndexForNode,
                         onStartIndexChange = { newStart ->
                             startIndexByNodeKey[nodeKey] = newStart
-                        }
+                        },
+                        onCompleted = onCompleted
                     )
                 }
             }

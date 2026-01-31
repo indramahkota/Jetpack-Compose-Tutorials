@@ -2,7 +2,6 @@ package com.smarttoolfactory.tutorial4_1chatbot.markdown
 
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -10,7 +9,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -23,17 +21,10 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.unit.dp
-import com.halilibo.richtext.commonmark.CommonmarkAstNodeParser
-import com.halilibo.richtext.markdown.AstBlockNodeComposer
-import com.halilibo.richtext.markdown.BasicMarkdown
-import com.halilibo.richtext.markdown.node.AstBlockNodeType
 import com.halilibo.richtext.markdown.node.AstNode
-import com.halilibo.richtext.markdown.node.AstParagraph
-import com.halilibo.richtext.markdown.node.AstTableRoot
 import com.halilibo.richtext.ui.RichTextScope
 import com.halilibo.richtext.ui.string.RichTextString
 import com.halilibo.richtext.ui.string.Text
-import com.smarttoolfactory.tutorial4_1chatbot.samples.CustomTable
 import com.smarttoolfactory.tutorial4_1chatbot.samples.rectUtils.LineSegmentation
 import com.smarttoolfactory.tutorial4_1chatbot.samples.rectUtils.RectWithAnimation
 import com.smarttoolfactory.tutorial4_1chatbot.samples.rectUtils.calculateBoundingRectList
@@ -50,7 +41,8 @@ internal fun RichTextScope.MarkdownFadeInRichText(
     revealCoefficient: Float = 4f,
     lingerInMillis: Long = 90L,
     segmentation: LineSegmentation = LineSegmentation.None,
-    debug: Boolean = true
+    debug: Boolean = true,
+    animate: Boolean = true,
 ) {
 
     var startIndex by remember {
@@ -68,6 +60,9 @@ internal fun RichTextScope.MarkdownFadeInRichText(
         startIndex = startIndex,
         onStartIndexChange = {
             startIndex = it
+        },
+        onCompleted = {
+
         }
     )
 }
@@ -82,7 +77,9 @@ internal fun RichTextScope.MarkdownFadeInRichText(
     segmentation: LineSegmentation = LineSegmentation.None,
     debug: Boolean = true,
     startIndex: Int,
-    onStartIndexChange: (Int) -> Unit
+    onStartIndexChange: (Int) -> Unit,
+    streamCompleted: Boolean = false,
+    onCompleted: () -> Unit
 ) {
     // Assume that only RichText nodes reside below this level.
     val richText: RichTextString = remember(astNode) {
@@ -100,6 +97,9 @@ internal fun RichTextScope.MarkdownFadeInRichText(
 
     // Track jobs so each rect starts once, and can optionally clean up.
     val jobsByRectId = remember { mutableStateMapOf<String, Job>() }
+
+    // ✅ Track how many rect animations are still running
+    var pendingRects by remember { mutableIntStateOf(0) }
 
     // One long-lived "dispatcher" coroutine; does not restart on new layouts.
     LaunchedEffect(Unit) {
@@ -122,15 +122,24 @@ internal fun RichTextScope.MarkdownFadeInRichText(
                         )
                         delay(lingerInMillis)
                     } finally {
-                        if (debug.not()) {
-                            rectList.remove(rectWithAnimation)
-                        }
+                        // ✅ Decrement pending when this rect's animation is finished
+                        pendingRects = (pendingRects - 1).coerceAtLeast(0)
+
+                        rectList.remove(rectWithAnimation)
+
                         jobsByRectId.remove(id)
                     }
                 }
 
                 jobsByRectId[id] = job
             }
+        }
+    }
+
+    // ✅ When streaming is done and no animations are pending, mark completed once.
+    LaunchedEffect(pendingRects) {
+        if (pendingRects == 0) {
+            onCompleted()
         }
     }
 
@@ -154,6 +163,10 @@ internal fun RichTextScope.MarkdownFadeInRichText(
                      */
                     val safeStartIndex = startIndex.coerceIn(0, endIndex + 1)
 
+                    // ✅ If there's no new range, do NOTHING.
+                    // Do NOT call onCompleted here (that’s what was completing early).
+                    if (safeStartIndex > endIndex) return@Text
+
                     val newRects = calculateBoundingRectList(
                         textLayoutResult = textLayout,
                         startIndex = safeStartIndex,
@@ -167,8 +180,14 @@ internal fun RichTextScope.MarkdownFadeInRichText(
                             endIndex = endIndex
                         )
                     }
+
                     println("onTextLayout safeStartIndex: $safeStartIndex, endIndex: $endIndex, text: $text")
+
+                    // ✅ advance progress (monotonic is enforced in caller)
                     onStartIndexChange(endIndex + 1)
+
+                    // ✅ count these rects as pending BEFORE sending to channel
+                    pendingRects += newRects.size
 
                     // Make them visible immediately
                     rectList.addAll(newRects)
@@ -180,6 +199,7 @@ internal fun RichTextScope.MarkdownFadeInRichText(
         )
     }
 }
+
 
 private fun ContentDrawScope.drawFadeInRects(
     rectList: List<RectWithAnimation>,
