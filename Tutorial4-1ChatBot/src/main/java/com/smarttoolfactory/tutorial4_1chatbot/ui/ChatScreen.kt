@@ -98,12 +98,10 @@ val inputBrush = Brush.verticalGradient(
 )
 
 /**
- * "At bottom" when the last visible item is the last item AND its bottom is within [thresholdPx]
- * of the viewport end.
- *
- * thresholdPx:
- * - 0: exact bottom
- * - positive: allow slack (recommended)
+ * Check if last item in visible items is the last item of Lazy list and scrolled to bottom
+ * of last item by this threshold. When threshold is negative we check if we scrolled to top
+ * by this offset. If it's 100px it returns true when user scrolls to last item's bottom less than
+ * 100px
  */
 private fun LazyListState.isAtBottomPx(thresholdPx: Int = 0): Boolean {
     val info = layoutInfo
@@ -404,6 +402,37 @@ fun ChatScreen(
     }
 }
 
+/**
+ * Handle scrolling after a message is sent, while streaming, and after the stream is terminated
+ * via completed, failed, or cancelled.
+ *
+ * - **Streaming**
+ *   - If the user has enabled auto-scroll ([autoScrollToBottom] == true), keep the last item
+ *     bottom-aligned as the assistant delta grows (layout-driven; safe when deltas arrive faster
+ *     than any ticker/interval).
+ *   - If the user manually scrolls (drag/fling) and settles at the *true bottom*, enable
+ *     auto-scroll (pin) for the remainder of the stream.
+ *
+ * - **Queued**
+ *   - Scroll the last user prompt to the top once (so the prompt stays visible while waiting).
+ *   - Compute and publish extra spacer height via [onLastItemHeightCalculated] to allow the prompt
+ *     to move to the top without compressing the layout.
+ *
+ * - **Terminal** (Completed/Failed/Cancelled)
+ *   - Reset spacer height if the last item is no longer visible.
+ *   - Optionally bottom-align once if the user is already “near bottom” by [autoScrollBottomThreshold].
+ *
+ * @param listState State of LazyColumn to read layout/visibility information and issue scroll requests.
+ * @param messageStatus Current message/stream status driving the state machine (Queued/Streaming/Terminal).
+ * @param autoScrollBottomThreshold "Near bottom" threshold used for terminal behavior (Dp converted to px).
+ * @param autoScrollToBottom Public flag: true when UI should keep pinning to the bottom during Streaming.
+ * @param userDragging True when the user has initiated a scroll gesture (drag/fling). Cleared on settle.
+ * @param programmaticScroll True while scroll is initiated by code (Jump-to-bottom or internal alignment).
+ * @param onAutoScrollToBottomChange Callback to update [autoScrollToBottom].
+ * @param onUserDraggingChange Callback to update/clear [userDragging].
+ * @param onProgrammaticScrollChange Callback to update [programmaticScroll] (kept for compatibility).
+ * @param onLastItemHeightCalculated Spacer height used to allow prompt-to-top behavior while queued.
+ */
 @Composable
 private fun UpdateScrollState(
     listState: LazyListState,
@@ -420,41 +449,54 @@ private fun UpdateScrollState(
     val density = LocalDensity.current
     val isKeyboardOpen by rememberKeyboardState()
 
+    // This is for starting auto scroll when user scrolls end of viewPort above bottom of input area.
+    // Touch Pointer should be going up while bottom of viewport should be above bottom of input area
     val isAboveBottom by remember(autoScrollBottomThreshold) {
         val thresholdPx = with(density) { autoScrollBottomThreshold.roundToPx() }
         derivedStateOf { listState.isAtBottomPx(thresholdPx) }
     }
 
-    // Use 0 or small positive slack if you want tolerance (e.g. 2..16px).
+    // This is one is for auto scroll from jump button, when scrolled to bottom of the screen
+    // requisite for enabling scroll is met
     val isPinnedAtBottom by remember {
         derivedStateOf { listState.isAtBottomPx(thresholdPx = 0) }
     }
 
     Text(
         modifier = Modifier
-            .padding(start = 170.dp)
+            .padding(start = 190.dp)
             .padding(top = 120.dp),
         fontSize = 16.sp,
         color = Color.Red,
         text = "STATUS: $messageStatus\n" +
                 "autoScrollToBottom: $autoScrollToBottom\n" +
-                "isAboveBottom(threshold): $isAboveBottom\n" +
+                "isAboveBottom: $isAboveBottom\n" +
                 "isPinnedAtBottom: $isPinnedAtBottom\n" +
                 "userDragging: $userDragging\n" +
                 "programmaticScroll: $programmaticScroll\n" +
                 "isScrollInProgress: ${listState.isScrollInProgress}"
     )
 
-    LaunchedEffect(messageStatus, isKeyboardOpen, autoScrollToBottom, userDragging, programmaticScroll) {
+    LaunchedEffect(
+        messageStatus,
+        isKeyboardOpen,
+        autoScrollToBottom,
+        userDragging,
+        programmaticScroll
+    ) {
+        // Guards for one-shot behavior per effect lifetime.
         var queuedScrollDone = false
         var queuedLastItemHeightComputed = false
-        var completionHandled = false
+        var terminalHandled = false
 
+        // Detect "settle": isScrollInProgress transitions true -> false.
         var wasScrollInProgress = false
 
-        // Coalesce "pin to bottom" requests to max 1 per frame
+        // Coalesce bottom-align requests to max 1 per frame.
         var pinRequestScheduled = false
 
+        // Clear programmatic flag at the start of this effect lifecycle.
+        // (Call sites may still manage it externally; this prevents a stale true from leaking in.)
         onProgrammaticScrollChange(false)
 
         snapshotFlow { listState.layoutInfo }
@@ -462,52 +504,54 @@ private fun UpdateScrollState(
                 val total = info.totalItemsCount
                 val visible = info.visibleItemsInfo
 
-                // While pinned + Streaming: keep bottom-aligning on every layout change.
-                // This fixes "deltas append faster than ticker / settle", because the last item can grow
-                // after you reached bottom and you’d otherwise fall behind.
-                if (messageStatus == MessageStatus.Streaming &&
-                    autoScrollToBottom &&
-                    !programmaticScroll
-                ) {
-                    if (!pinRequestScheduled) {
-                        pinRequestScheduled = true
-                        launch {
-                            awaitFrame()
-                            val totalNow = listState.layoutInfo.totalItemsCount
-                            val lastIndex = totalNow - 1
-                            if (lastIndex >= 0) {
-                                try {
-                                    listState.requestScrollToItem(lastIndex, Int.MAX_VALUE)
-                                } catch (e: CancellationException) {
-                                    println("😱 requestScrollToItem failed: ${e.message}")
-                                }
-                            }
-                            pinRequestScheduled = false
-                        }
-                    }
-                }
-
-                // Enable pin on SETTLE during Streaming (drag OR fling)
-                val nowInProgress = listState.isScrollInProgress
+                // Streaming
                 if (messageStatus == MessageStatus.Streaming) {
-                    if (wasScrollInProgress && !nowInProgress) {
-                        awaitFrame()
 
-                        // Use the real bottom check here (not the negative threshold one)
+                    // Enable pin on SETTLE:
+                    // If the user was dragging/flinging and the list settles at the true bottom,
+                    // enable auto-scroll for subsequent deltas.
+                    val nowInProgress = listState.isScrollInProgress
+                    if (wasScrollInProgress && !nowInProgress) {
+                        awaitFrame() // allow settle layout to apply
+
                         val shouldEnablePin =
-                            userDragging &&
-                                    !programmaticScroll &&
-                                    isPinnedAtBottom
+                            userDragging && !programmaticScroll && isPinnedAtBottom
 
                         if (shouldEnablePin) {
                             onAutoScrollToBottomChange(true)
                         }
 
+                        // Always clear user-drag latch after settle.
                         onUserDraggingChange(false)
                     }
-                }
-                wasScrollInProgress = nowInProgress
+                    wasScrollInProgress = nowInProgress
 
+                    // Keep pinned to bottom while streaming:
+                    // Layout-driven pin fixes "deltas arrive faster than interval" cases.
+                    if (autoScrollToBottom && !programmaticScroll) {
+                        if (!pinRequestScheduled) {
+                            pinRequestScheduled = true
+                            launch {
+                                awaitFrame()
+
+                                val totalNow = listState.layoutInfo.totalItemsCount
+                                val lastIndex = totalNow - 1
+                                if (lastIndex >= 0) {
+                                    try {
+                                        // Use MAX_VALUE to bottom-align within the last item.
+                                        listState.requestScrollToItem(lastIndex, Int.MAX_VALUE)
+                                    } catch (_: CancellationException) {
+                                        // ignore
+                                    }
+                                }
+
+                                pinRequestScheduled = false
+                            }
+                        }
+                    }
+                }
+
+                // Queued
                 if (messageStatus == MessageStatus.Queued && !isKeyboardOpen) {
                     if (total >= 2) {
                         val lastUserMessageIndex = total - 2
@@ -515,20 +559,20 @@ private fun UpdateScrollState(
                             visible.firstOrNull { it.index == lastUserMessageIndex }
 
                         if (lastUserMessageItem != null) {
-                            // Ensure layout is settled for this frame before reading viewport offsets.
-                            awaitFrame()
+                            awaitFrame() // ensure stable viewport offsets for this frame
 
+                            // Compute spacer height once (skip for 1st prompt case).
                             if (!queuedLastItemHeightComputed && total > 2) {
                                 val viewportEndOffset = info.viewportEndOffset
                                 val lastUserMessageBottom = lastUserMessageItem.size
                                 val gap = viewportEndOffset - lastUserMessageBottom
                                 val finalGap = max(0, gap)
 
-                                val lastItemHeight = with(density) { finalGap.toDp() }
-                                onLastItemHeightCalculated(lastItemHeight)
+                                onLastItemHeightCalculated(with(density) { finalGap.toDp() })
                                 queuedLastItemHeightComputed = true
                             }
 
+                            // Scroll prompt to top once.
                             if (!queuedScrollDone) {
                                 try {
                                     listState.animateScrollToItem(lastUserMessageIndex)
@@ -538,6 +582,7 @@ private fun UpdateScrollState(
                                 queuedScrollDone = true
                             }
                         } else {
+                            // Pre-scroll to bring prompt into viewport so it can be measured.
                             try {
                                 listState.animateScrollToItem(lastUserMessageIndex)
                             } catch (_: CancellationException) {
@@ -547,30 +592,39 @@ private fun UpdateScrollState(
                     }
                 }
 
+                // ------------------------------
+                // Terminal (Completed / Failed / Cancelled)
+                // ------------------------------
                 val isTerminal =
                     messageStatus == MessageStatus.Completed ||
                             messageStatus == MessageStatus.Failed ||
                             messageStatus == MessageStatus.Cancelled
 
-                if (isTerminal && !completionHandled) {
+                if (isTerminal && !terminalHandled) {
                     val lastIndex = total - 1
                     val lastVisibleIndex = visible.lastOrNull()?.index
-                    val shouldResetGap = lastIndex != lastVisibleIndex
-                    if (shouldResetGap) onLastItemHeightCalculated(0.dp)
+
+                    // Reset spacer if last item isn't visible anymore.
+                    if (lastIndex != lastVisibleIndex) {
+                        onLastItemHeightCalculated(0.dp)
+                    }
 
                     awaitFrame()
+
+                    // If already near bottom, bottom-align once (keep existing behavior).
                     if (total > 0 && isAboveBottom) {
                         listState.scrollToItem(lastIndex, Int.MAX_VALUE)
                     }
-                    completionHandled = true
+
+                    terminalHandled = true
                 }
             }
     }
 
-    // ⛔️ Removed ticker-based pinning.
-    // Pinning is now layout-driven above, which is delta-speed safe and fixes the "sometimes jump doesn't pin"
-    // because it no longer depends on a bottom check racing against fast incoming deltas.
+    // NOTE: ticker-based pinning intentionally removed.
+    // Pinning is layout-driven above and coalesced to one request per frame.
 }
+
 
 @Composable
 private fun InputArea(
