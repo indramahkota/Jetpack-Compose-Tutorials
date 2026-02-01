@@ -25,17 +25,6 @@ data class RectWithAnimation(
     val animatable: Animatable<Float, AnimationVector1D> = Animatable(0f),
 )
 
-internal data class RectWithAnimatable(
-    val id: String,
-    val charStart: Int,
-    val charEnd: Int,
-    val batchId: Long = 0L,
-    val rect: Rect,
-    val animatable: Animatable<Float, AnimationVector1D> = Animatable(0f),
-)
-
-internal fun RectWithAnimatable.covers(index: Int): Boolean = index in charStart..charEnd
-
 data class RectWithColor(
     val rect: Rect,
     val color: Color
