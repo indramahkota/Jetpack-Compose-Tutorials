@@ -19,9 +19,9 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.halilibo.richtext.ui.BasicRichText
-import com.halilibo.richtext.ui.RichTextStyle
 import com.halilibo.richtext.ui.RichTextThemeProvider
 import com.smarttoolfactory.tutorial4_1chatbot.markdown.MarkdownComposer
+import com.smarttoolfactory.tutorial4_1chatbot.ui.component.MarkDownStyle
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
@@ -89,9 +89,7 @@ fun MarkdownTokenStreamPreview() {
 
             BasicRichText(
                 modifier = Modifier,
-                style = RichTextStyle.Default.copy(
-                    
-                )
+                style = MarkDownStyle.DefaultTextStyle
             ) {
 
                 MarkdownComposer(
