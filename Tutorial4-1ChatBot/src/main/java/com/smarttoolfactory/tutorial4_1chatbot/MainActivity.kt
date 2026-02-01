@@ -29,8 +29,8 @@ class MainActivity : ComponentActivity() {
             RichTextThemeProvider(
                 textStyleProvider = {
                     TextStyle.Default.copy(
-                        fontSize = 18.sp,
-                        lineHeight = 24.sp
+                        fontSize = 16.sp,
+                        lineHeight = 20.sp
                     )
                 }
             ) {

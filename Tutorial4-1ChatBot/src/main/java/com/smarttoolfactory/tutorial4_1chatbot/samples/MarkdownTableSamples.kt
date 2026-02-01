@@ -336,16 +336,16 @@ internal fun RichTextScope.CustomTable(
                     ) {
                         if (cellNode != null) {
 
-                            MarkdownFadeInRichText(
-                                modifier = Modifier
-                                    .matchParentSize(),
-                                astNode = cellNode
-                            )
-//                            MarkdownRichText(
+//                            MarkdownFadeInRichText(
 //                                modifier = Modifier
 //                                    .matchParentSize(),
 //                                astNode = cellNode
 //                            )
+                            MarkdownRichText(
+                                modifier = Modifier
+                                    .matchParentSize(),
+                                astNode = cellNode
+                            )
                         }
                     }
                 }

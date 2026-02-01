@@ -161,7 +161,7 @@ fun MessageRow(
                             ) {
                                 MarkdownComposer(
                                     markdown = message.text,
-                                    debug = false,
+                                    debug = true,
                                     messageKey = message.uiKey,
                                     // ✅ Typical: animate only while streaming.
                                     // Completed paragraphs will auto-disable via completedByNodeKey.

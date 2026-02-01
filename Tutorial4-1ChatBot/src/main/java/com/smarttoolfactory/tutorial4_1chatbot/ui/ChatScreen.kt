@@ -274,9 +274,6 @@ fun ChatScreen(
                 .fillMaxSize()
                 .pointerInput(Unit) {
                     detectTapGestures(
-                        onPress = {
-                            autoScrollToBottom = false
-                        },
                         onTap = {
                             if (isKeyboardOpen) {
                                 focusManager.clearFocus()
