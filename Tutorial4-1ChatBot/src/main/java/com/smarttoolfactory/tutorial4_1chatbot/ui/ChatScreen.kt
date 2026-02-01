@@ -32,7 +32,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -49,7 +48,6 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -59,19 +57,12 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.coerceAtLeast
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.smarttoolfactory.tutorial4_1chatbot.ui.component.button.JumpToBottomButton
 import com.smarttoolfactory.tutorial4_1chatbot.ui.component.input.ChatTextField
 import com.smarttoolfactory.tutorial4_1chatbot.ui.component.message.MessageRow
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.android.awaitFrame
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.emptyFlow
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlin.math.max
 
@@ -363,7 +354,6 @@ fun ChatScreen(
 
             InputArea(
                 modifier = Modifier
-                    .alpha(.3f)
                     .background(brush = inputBrush)
                     .padding(bottom = bottomPadding, start = 16.dp, end = 16.dp)
                     .navigationBarsPadding()
@@ -462,20 +452,20 @@ private fun UpdateScrollState(
         derivedStateOf { listState.isAtBottomPx(thresholdPx = 0) }
     }
 
-    Text(
-        modifier = Modifier
-            .padding(start = 190.dp)
-            .padding(top = 120.dp),
-        fontSize = 16.sp,
-        color = Color.Red,
-        text = "STATUS: $messageStatus\n" +
-                "autoScrollToBottom: $autoScrollToBottom\n" +
-                "isAboveBottom: $isAboveBottom\n" +
-                "isPinnedAtBottom: $isPinnedAtBottom\n" +
-                "userDragging: $userDragging\n" +
-                "programmaticScroll: $programmaticScroll\n" +
-                "isScrollInProgress: ${listState.isScrollInProgress}"
-    )
+//    Text(
+//        modifier = Modifier
+//            .padding(start = 160.dp)
+//            .padding(top = 120.dp),
+//        fontSize = 16.sp,
+//        color = Color.Red,
+//        text = "STATUS: $messageStatus\n" +
+//                "autoScrollToBottom: $autoScrollToBottom\n" +
+//                "isAboveBottom: $isAboveBottom\n" +
+//                "isPinnedAtBottom: $isPinnedAtBottom\n" +
+//                "userDragging: $userDragging\n" +
+//                "programmaticScroll: $programmaticScroll\n" +
+//                "isScrollInProgress: ${listState.isScrollInProgress}"
+//    )
 
     LaunchedEffect(
         messageStatus,
@@ -538,10 +528,9 @@ private fun UpdateScrollState(
                                 val lastIndex = totalNow - 1
                                 if (lastIndex >= 0) {
                                     try {
-                                        // Use MAX_VALUE to bottom-align within the last item.
                                         listState.requestScrollToItem(lastIndex, Int.MAX_VALUE)
-                                    } catch (_: CancellationException) {
-                                        // ignore
+                                    } catch (e: CancellationException) {
+                                        println("🔥Auto scroll failed: ${e.message}")
                                     }
                                 }
 
@@ -592,9 +581,7 @@ private fun UpdateScrollState(
                     }
                 }
 
-                // ------------------------------
-                // Terminal (Completed / Failed / Cancelled)
-                // ------------------------------
+                // Terminal (Completed / Failed / Canceled)
                 val isTerminal =
                     messageStatus == MessageStatus.Completed ||
                             messageStatus == MessageStatus.Failed ||
@@ -620,9 +607,6 @@ private fun UpdateScrollState(
                 }
             }
     }
-
-    // NOTE: ticker-based pinning intentionally removed.
-    // Pinning is layout-driven above and coalesced to one request per frame.
 }
 
 
