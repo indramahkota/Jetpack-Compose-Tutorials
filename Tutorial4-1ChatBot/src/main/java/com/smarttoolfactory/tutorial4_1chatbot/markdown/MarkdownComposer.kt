@@ -50,98 +50,6 @@ internal fun MarkdownComposer(
     markdown: String,
     debug: Boolean = false,
     animate: Boolean = true,
-    segmentation: LineSegmentation = LineSegmentation.None,
-    onCompleted: () -> Unit = {}
-) {
-    val commonmarkAstNodeParser: CommonmarkAstNodeParser = remember {
-        CommonmarkAstNodeParser()
-    }
-
-    val astRootNode by produceState<AstNode?>(
-        initialValue = null,
-        key1 = commonmarkAstNodeParser,
-        key2 = markdown
-    ) {
-        value = commonmarkAstNodeParser.parse(markdown)
-    }
-
-
-    val tableBlockNodeComposer: AstBlockNodeComposer = remember {
-        object : AstBlockNodeComposer {
-
-            override fun predicate(astBlockNodeType: AstBlockNodeType): Boolean {
-                // Intercept tables
-                val isTable = astBlockNodeType == AstTableRoot
-                // Intercept Text
-                val isText = astBlockNodeType == AstParagraph
-//                println(
-//                    "isTable: $isTable, " +
-//                            "isText: $isText," +
-//                            " astBlockNodeType: $astBlockNodeType"
-//                )
-                return isTable || isText
-            }
-
-            @Composable
-            override fun RichTextScope.Compose(
-                astNode: AstNode,
-                visitChildren: @Composable ((AstNode) -> Unit)
-            ) {
-                if (astNode.type is AstTableRoot) {
-                    CustomTable(tableRoot = astNode)
-                } else if (astNode.type is AstParagraph) {
-
-                    /**
-                     * Persist startIndex OUTSIDE the node composable so it won't reset to 0 when:
-                     * - the markdown becomes valid (e.g. ** closes),
-                     * - AST is rebuilt,
-                     * - paragraph Text() composable gets recreated.
-                     */
-                    val startIndexByNodeKey = remember(markdown) {
-                        mutableStateMapOf<String, Int>()
-                    }
-
-                    val nodeKey = remember(astNode) { astNode.stablePathKey() }
-
-                    val startIndexForNode = startIndexByNodeKey[nodeKey] ?: -1
-
-//                    println("✅ nodeKey: $nodeKey, startIndex: $startIndexForNode")
-
-                    MarkdownFadeInRichText(
-                        modifier = Modifier.border(
-                            2.dp,
-                            if (animate) Color.Cyan else Color.Magenta
-                        ),
-                        astNode = astNode,
-                        segmentation = segmentation,
-                        debug = debug,
-                        startIndex = startIndexForNode,
-                        onStartIndexChange = { newStart ->
-                            // monotonic to avoid regressions
-                            val old = startIndexByNodeKey[nodeKey] ?: 0
-                            startIndexByNodeKey[nodeKey] = maxOf(old, newStart)
-                        },
-                        onCompleted = {
-                            onCompleted()
-                        },
-                        animate = animate
-                    )
-                }
-            }
-        }
-    }
-
-    astRootNode?.let { astNode ->
-        RichTextScope.BasicMarkdown(astNode, tableBlockNodeComposer)
-    }
-}
-
-@Composable
-internal fun MarkdownComposer(
-    markdown: String,
-    debug: Boolean = false,
-    revealStore: RevealStore? = null,
-    animate: Boolean = true,
     messageKey: String? = null,
     segmentation: LineSegmentation = LineSegmentation.None,
     onCompleted: () -> Unit = {}
@@ -162,9 +70,7 @@ internal fun MarkdownComposer(
         object : AstBlockNodeComposer {
 
             override fun predicate(astBlockNodeType: AstBlockNodeType): Boolean {
-                // Intercept tables
                 val isTable = astBlockNodeType == AstTableRoot
-                // Intercept Text
                 val isText = astBlockNodeType == AstParagraph
                 return isTable || isText
             }
@@ -176,30 +82,29 @@ internal fun MarkdownComposer(
             ) {
 
                 if (animate) {
+                    val revealStore = LocalRevealStore.current
+
                     val localFallbackStarts = remember { mutableStateMapOf<String, Int>() }
                     val localFallbackCompleted = remember { mutableStateMapOf<String, Boolean>() }
 
                     val startIndexByNodeKey =
-                        revealStore?.startIndexByNodeKey ?: localFallbackStarts
+                        revealStore.startIndexByNodeKey.ifEmpty { localFallbackStarts }
                     val completedByNodeKey =
-                        revealStore?.completedByNodeKey ?: localFallbackCompleted
+                        revealStore.completedByNodeKey.ifEmpty { localFallbackCompleted }
 
                     val rawNodeKey = remember(astNode) { astNode.stablePathKey() }
 
-                    // ✅ CRITICAL: prefix by messageKey so different messages don't collide
-                    // If messageKey is null, fall back to rawNodeKey (preview/non-lazy uses)
                     val nodeKey = if (messageKey != null) {
                         "$messageKey|$rawNodeKey"
                     } else {
                         rawNodeKey
                     }
 
+                    println("Composer $messageKey, rawNodeKey: $rawNodeKey")
+
                     val startIndexForNode = startIndexByNodeKey[nodeKey] ?: 0
-
-//                    println("✅ nodeKey: $nodeKey, startIndex: $startIndexForNode")
-
                     val alreadyCompleted = completedByNodeKey[nodeKey] == true
-                    val shouldAnimate = animate && !alreadyCompleted
+                    val shouldAnimate = !alreadyCompleted
 
                     if (astNode.type is AstTableRoot) {
                         CustomTable(tableRoot = astNode)
@@ -214,7 +119,6 @@ internal fun MarkdownComposer(
                             debug = debug,
                             startIndex = startIndexForNode,
                             onStartIndexChange = { newStart ->
-                                // monotonic to avoid regressions
                                 val old = startIndexByNodeKey[nodeKey] ?: 0
                                 startIndexByNodeKey[nodeKey] = maxOf(old, newStart)
                             },
@@ -226,6 +130,7 @@ internal fun MarkdownComposer(
                         )
                     }
                 } else {
+                    // ✅ untouched non-animated path
                     if (astNode.type is AstTableRoot) {
                         CustomTable(tableRoot = astNode)
                     } else if (astNode.type is AstParagraph) {

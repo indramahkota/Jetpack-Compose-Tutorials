@@ -17,7 +17,6 @@ import com.halilibo.richtext.commonmark.Markdown
 import com.halilibo.richtext.ui.BasicRichText
 import com.halilibo.richtext.ui.RichTextStyle
 import com.smarttoolfactory.tutorial4_1chatbot.markdown.MarkdownComposer
-import com.smarttoolfactory.tutorial4_1chatbot.markdown.RevealStore
 import com.smarttoolfactory.tutorial4_1chatbot.ui.Message
 import com.smarttoolfactory.tutorial4_1chatbot.ui.MessageStatus
 import com.smarttoolfactory.tutorial4_1chatbot.ui.Role
@@ -73,8 +72,7 @@ val style = RichTextStyle.Default.copy(
 @Composable
 fun MessageRow(
     modifier: Modifier = Modifier,
-    message: Message,
-    revealStore: RevealStore
+    message: Message
 ) {
     val isUser = message.role == Role.User
 
@@ -123,7 +121,7 @@ fun MessageRow(
                                 MarkdownComposer(
                                     markdown = message.text,
                                     debug = false,
-                                    revealStore = revealStore,
+                                    messageKey = message.uiKey,
                                     // ✅ Typical: animate only while streaming.
                                     // Completed paragraphs will auto-disable via completedByNodeKey.
                                     animate = (message.messageStatus == MessageStatus.Streaming),

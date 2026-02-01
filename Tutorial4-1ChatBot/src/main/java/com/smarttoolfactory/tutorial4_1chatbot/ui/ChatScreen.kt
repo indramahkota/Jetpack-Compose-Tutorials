@@ -293,10 +293,6 @@ fun ChatScreen(
                     )
                 }
         ) {
-            // ✅ This lives at the screen level: it does NOT get disposed when items scroll out.
-            val revealStoreByMessageKey = remember {
-                mutableStateMapOf<String, RevealStore>() // message.uiKey -> RevealStore
-            }
 
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
@@ -332,14 +328,10 @@ fun ChatScreen(
 //                            .border(2.dp, Color.Blue)
                     }
 
-                    // ✅ IMPORTANT: do NOT create RevealStore with remember{} here.
-                    // Just fetch from the screen-level map.
-                    val revealStore: RevealStore = revealStoreByMessageKey.getOrPut(msg.uiKey) { RevealStore() }
 
                     MessageRow(
                         modifier = modifier,
-                        message = msg,
-                        revealStore = revealStore
+                        message = msg
                     )
                 }
             }

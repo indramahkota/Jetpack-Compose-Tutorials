@@ -2,7 +2,12 @@ package com.smarttoolfactory.tutorial4_1chatbot.markdown
 
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.staticCompositionLocalOf
 import kotlin.collections.set
+
+val LocalRevealStore = staticCompositionLocalOf<RevealStore> {
+    error("LocalRevealStore not provided")
+}
 
 @Stable
 class RevealStore {
