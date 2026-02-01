@@ -1,7 +1,6 @@
 package com.smarttoolfactory.tutorial4_1chatbot.markdown
 
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -70,7 +69,7 @@ internal fun MarkdownComposer(
         object : AstBlockNodeComposer {
 
             override fun predicate(astBlockNodeType: AstBlockNodeType): Boolean {
-                val isTable = astBlockNodeType == AstTableRoot
+                val isTable = astBlockNodeType is AstTableRoot
                 val isText = astBlockNodeType == AstParagraph
                 return isTable || isText
             }
@@ -108,10 +107,14 @@ internal fun MarkdownComposer(
                         CustomTable(tableRoot = astNode)
                     } else if (astNode.type is AstParagraph) {
                         MarkdownFadeInRichText(
-                            modifier = Modifier.border(
-                                2.dp,
-                                if (shouldAnimate) Color.Cyan else Color.Magenta
-                            ),
+                            modifier = if (debug.not()) {
+                                Modifier
+                            } else {
+                                Modifier.border(
+                                    2.dp,
+                                    if (shouldAnimate) Color.Cyan else Color.Magenta
+                                )
+                            },
                             astNode = astNode,
                             segmentation = segmentation,
                             debug = debug,
@@ -128,13 +131,10 @@ internal fun MarkdownComposer(
                         )
                     }
                 } else {
-                    // ✅ untouched non-animated path
                     if (astNode.type is AstTableRoot) {
                         CustomTable(tableRoot = astNode)
                     } else if (astNode.type is AstParagraph) {
-                        Box(Modifier.border(2.dp, Color(0xff546E7A))) {
-                            BasicMarkdown(astNode)
-                        }
+                        BasicMarkdown(astNode)
                     }
                 }
             }
