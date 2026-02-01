@@ -44,6 +44,7 @@ internal fun RichTextScope.MarkdownFadeInRichText(
     segmentation: LineSegmentation = LineSegmentation.None,
     debug: Boolean = true,
     animate: Boolean = true,
+    onCompleted: () -> Unit = {},
 ) {
 
     var startIndex by remember {
@@ -58,13 +59,12 @@ internal fun RichTextScope.MarkdownFadeInRichText(
         lingerInMillis = lingerInMillis,
         segmentation = segmentation,
         debug = debug,
+        animate = animate,
         startIndex = startIndex,
         onStartIndexChange = {
             startIndex = it
         },
-        onCompleted = {
-
-        }
+        onCompleted = onCompleted
     )
 }
 
@@ -77,14 +77,53 @@ internal fun RichTextScope.MarkdownFadeInRichText(
     lingerInMillis: Long = 90L,
     segmentation: LineSegmentation = LineSegmentation.None,
     debug: Boolean = true,
+    animate: Boolean = true,
     startIndex: Int,
     onStartIndexChange: (Int) -> Unit,
-    onCompleted: () -> Unit
+    onCompleted: () -> Unit = {}
 ) {
     val richText: RichTextString = remember(astNode) {
         computeRichTextString(astNode)
     }
 
+    // If not animating, render normally and do not allocate rects/jobs.
+    // This is what prevents "re-trigger" when a completed message scrolls back into view.
+    if (!animate) {
+        Box(modifier) {
+            Text(
+                text = richText,
+                modifier = Modifier.matchParentSize()
+            )
+        }
+    } else {
+        MarkdownFadeInRichText(
+            modifier = modifier,
+            richText = richText,
+            delayInMillis = delayInMillis,
+            revealCoefficient = revealCoefficient,
+            lingerInMillis = lingerInMillis,
+            segmentation = segmentation,
+            debug = debug,
+            startIndex = startIndex,
+            onStartIndexChange = onStartIndexChange,
+            onCompleted = onCompleted
+        )
+    }
+}
+
+@Composable
+fun RichTextScope.MarkdownFadeInRichText(
+    modifier: Modifier = Modifier,
+    richText: RichTextString,
+    delayInMillis: Long = 90L,
+    revealCoefficient: Float = 4f,
+    lingerInMillis: Long = 90L,
+    segmentation: LineSegmentation,
+    debug: Boolean,
+    startIndex: Int,
+    onStartIndexChange: (Int) -> Unit,
+    onCompleted: () -> Unit,
+) {
     val rectList = remember { mutableStateListOf<RectWithAnimation>() }
 
     val rectBatchChannel = remember {
@@ -132,7 +171,9 @@ internal fun RichTextScope.MarkdownFadeInRichText(
                             delay(lingerInMillis)
                         } finally {
                             pendingRects = (pendingRects - 1).coerceAtLeast(0)
-                            rectList.remove(rectWithAnimation)
+                            if (!debug) {
+                                rectList.remove(rectWithAnimation)
+                            }
                             jobsByRectId.remove(id)
                         }
                     }
@@ -224,7 +265,8 @@ internal fun RichTextScope.MarkdownFadeInRichText(
 
                 // Dedupe before adding/sending
                 val existingRectIds = rectList.asSequence().map { it.id }.toHashSet()
-                val filtered = producedRects.filter { it.id !in jobsByRectId && it.id !in existingRectIds }
+                val filtered =
+                    producedRects.filter { it.id !in jobsByRectId && it.id !in existingRectIds }
 
                 if (filtered.isNotEmpty()) {
                     rectList.addAll(filtered)

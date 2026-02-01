@@ -68,10 +68,6 @@ private fun TrailFadeInParallelWithCallbackPreview() {
         mutableStateOf(false)
     }
 
-    var completed3 by remember {
-        mutableStateOf(false)
-    }
-
     LaunchedEffect(startAnimation) {
         delay(1000)
         singleLongText.toWordFlow(
@@ -102,7 +98,7 @@ private fun TrailFadeInParallelWithCallbackPreview() {
         Text(
             "MarkdownComposer",
             fontSize = 18.sp,
-            color = if (completed3) Color.Green else Color.Red
+            color = if (completed2) Color.Green else Color.Red
         )
 
         BasicRichText(
@@ -112,11 +108,11 @@ private fun TrailFadeInParallelWithCallbackPreview() {
             MarkdownComposer(
                 markdown = chunkText,
 //            markdown = singleLongText,
-                useFirst = false,
                 debug = true,
+                animate = completed2.not(),
                 onCompleted = {
                     println("🔥🔥🔥 COMPLETED 3")
-                    completed3 = true
+                    completed2 = true
                 }
             )
         }
