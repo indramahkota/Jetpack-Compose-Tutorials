@@ -5,7 +5,6 @@ package com.smarttoolfactory.tutorial4_1chatbot.ui
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -41,7 +40,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -62,7 +60,6 @@ import androidx.compose.ui.unit.coerceAtLeast
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.smarttoolfactory.tutorial4_1chatbot.markdown.RevealStore
 import com.smarttoolfactory.tutorial4_1chatbot.ui.component.button.JumpToBottomButton
 import com.smarttoolfactory.tutorial4_1chatbot.ui.component.input.ChatTextField
 import com.smarttoolfactory.tutorial4_1chatbot.ui.component.message.MessageRow
@@ -327,7 +324,6 @@ fun ChatScreen(
                         Modifier
 //                            .border(2.dp, Color.Blue)
                     }
-
 
                     MessageRow(
                         modifier = modifier,

@@ -5,9 +5,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.staticCompositionLocalOf
 import kotlin.collections.set
 
-val LocalRevealStore = staticCompositionLocalOf<RevealStore> {
-    error("LocalRevealStore not provided")
-}
+val LocalRevealStore = staticCompositionLocalOf<RevealStore?> { null }
 
 @Stable
 class RevealStore {

@@ -116,7 +116,48 @@ fun MessageRow(
                         Column(Modifier.padding(16.dp)) {
                             BasicRichText(
                                 modifier = Modifier,
-                                style = RichTextStyle.Default
+                                style = RichTextStyle.Default.copy(
+                                    paragraphSpacing = 16.sp,
+                                    headingStyle = { level, base ->
+                                        when (level) {
+                                            1 -> base.copy(
+                                                fontSize = 26.sp,
+                                                lineHeight = 32.sp,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+
+                                            2 -> base.copy(
+                                                fontSize = 22.sp,
+                                                lineHeight = 28.sp,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+
+                                            3 -> base.copy(
+                                                fontSize = 20.sp,
+                                                lineHeight = 26.sp,
+                                                fontWeight = FontWeight.Medium
+                                            )
+
+                                            4 -> base.copy(
+                                                fontSize = 18.sp,
+                                                lineHeight = 24.sp,
+                                                fontWeight = FontWeight.Medium
+                                            )
+
+                                            5 -> base.copy(
+                                                fontSize = 16.sp,
+                                                lineHeight = 22.sp,
+                                                fontWeight = FontWeight.Medium
+                                            )
+
+                                            else -> base.copy(
+                                                fontSize = 14.sp,
+                                                lineHeight = 20.sp,
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                        }
+                                    }
+                                )
                             ) {
                                 MarkdownComposer(
                                     markdown = message.text,

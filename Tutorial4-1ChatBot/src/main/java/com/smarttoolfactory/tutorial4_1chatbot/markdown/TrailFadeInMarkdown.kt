@@ -38,13 +38,13 @@ import kotlinx.coroutines.launch
 internal fun RichTextScope.MarkdownFadeInRichText(
     astNode: AstNode,
     modifier: Modifier = Modifier,
+    debug: Boolean = true,
+    animate: Boolean = true,
     delayInMillis: Long = 90L,
     revealCoefficient: Float = 4f,
     lingerInMillis: Long = 90L,
     segmentation: LineSegmentation = LineSegmentation.None,
-    debug: Boolean = true,
-    animate: Boolean = true,
-    onCompleted: () -> Unit = {},
+    onCompleted: () -> Unit = {}
 ) {
 
     var startIndex by remember {
@@ -72,12 +72,12 @@ internal fun RichTextScope.MarkdownFadeInRichText(
 internal fun RichTextScope.MarkdownFadeInRichText(
     astNode: AstNode,
     modifier: Modifier = Modifier,
+    debug: Boolean = true,
+    animate: Boolean = true,
     delayInMillis: Long = 90L,
     revealCoefficient: Float = 4f,
     lingerInMillis: Long = 90L,
     segmentation: LineSegmentation = LineSegmentation.None,
-    debug: Boolean = true,
-    animate: Boolean = true,
     startIndex: Int,
     onStartIndexChange: (Int) -> Unit,
     onCompleted: () -> Unit = {}
@@ -115,11 +115,11 @@ internal fun RichTextScope.MarkdownFadeInRichText(
 fun RichTextScope.MarkdownFadeInRichText(
     modifier: Modifier = Modifier,
     richText: RichTextString,
+    debug: Boolean,
     delayInMillis: Long = 90L,
     revealCoefficient: Float = 4f,
     lingerInMillis: Long = 90L,
     segmentation: LineSegmentation,
-    debug: Boolean,
     startIndex: Int,
     onStartIndexChange: (Int) -> Unit,
     onCompleted: () -> Unit,

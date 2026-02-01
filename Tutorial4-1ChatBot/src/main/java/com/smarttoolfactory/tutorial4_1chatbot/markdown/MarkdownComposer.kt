@@ -3,11 +3,11 @@ package com.smarttoolfactory.tutorial4_1chatbot.markdown
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -66,7 +66,7 @@ internal fun MarkdownComposer(
         value = commonmarkAstNodeParser.parse(markdown)
     }
 
-    val tableBlockNodeComposer: AstBlockNodeComposer = remember {
+    val tableBlockNodeComposer: AstBlockNodeComposer = remember(segmentation) {
         object : AstBlockNodeComposer {
 
             override fun predicate(astBlockNodeType: AstBlockNodeType): Boolean {
@@ -82,15 +82,15 @@ internal fun MarkdownComposer(
             ) {
 
                 if (animate) {
-                    val revealStore = LocalRevealStore.current
+                    val revealStore: RevealStore? = LocalRevealStore.current
 
                     val localFallbackStarts = remember { mutableStateMapOf<String, Int>() }
                     val localFallbackCompleted = remember { mutableStateMapOf<String, Boolean>() }
 
-                    val startIndexByNodeKey =
-                        revealStore.startIndexByNodeKey.ifEmpty { localFallbackStarts }
-                    val completedByNodeKey =
-                        revealStore.completedByNodeKey.ifEmpty { localFallbackCompleted }
+                    val startIndexByNodeKey: SnapshotStateMap<String, Int> =
+                        revealStore?.startIndexByNodeKey ?: localFallbackStarts
+                    val completedByNodeKey: SnapshotStateMap<String, Boolean> =
+                        revealStore?.completedByNodeKey ?: localFallbackCompleted
 
                     val rawNodeKey = remember(astNode) { astNode.stablePathKey() }
 
@@ -99,8 +99,6 @@ internal fun MarkdownComposer(
                     } else {
                         rawNodeKey
                     }
-
-                    println("Composer $messageKey, rawNodeKey: $rawNodeKey")
 
                     val startIndexForNode = startIndexByNodeKey[nodeKey] ?: 0
                     val alreadyCompleted = completedByNodeKey[nodeKey] == true
