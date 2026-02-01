@@ -41,6 +41,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -61,6 +62,7 @@ import androidx.compose.ui.unit.coerceAtLeast
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.smarttoolfactory.tutorial4_1chatbot.markdown.RevealStore
 import com.smarttoolfactory.tutorial4_1chatbot.ui.component.button.JumpToBottomButton
 import com.smarttoolfactory.tutorial4_1chatbot.ui.component.input.ChatTextField
 import com.smarttoolfactory.tutorial4_1chatbot.ui.component.message.MessageRow
@@ -114,12 +116,12 @@ private fun LazyListState.isAtBottomPx(thresholdPx: Int = 0): Boolean {
     val itemSize = lastVisible.size
     val itemBottom = lastVisible.offset + itemSize
 
-    println(
-        "LazyListState last item index: ${lastVisible.index}" +
-                "viewportBottom: $viewportBottom, " +
-                "item size: ${lastVisible.size}, " +
-                "itemBottom: $itemBottom"
-    )
+//    println(
+//        "LazyListState last item index: ${lastVisible.index}" +
+//                "viewportBottom: $viewportBottom, " +
+//                "item size: ${lastVisible.size}, " +
+//                "itemBottom: $itemBottom"
+//    )
 
     return itemBottom - viewportBottom <= thresholdPx
 }
@@ -291,6 +293,10 @@ fun ChatScreen(
                     )
                 }
         ) {
+            // ✅ This lives at the screen level: it does NOT get disposed when items scroll out.
+            val revealStoreByMessageKey = remember {
+                mutableStateMapOf<String, RevealStore>() // message.uiKey -> RevealStore
+            }
 
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
@@ -326,9 +332,14 @@ fun ChatScreen(
 //                            .border(2.dp, Color.Blue)
                     }
 
+                    // ✅ IMPORTANT: do NOT create RevealStore with remember{} here.
+                    // Just fetch from the screen-level map.
+                    val revealStore: RevealStore = revealStoreByMessageKey.getOrPut(msg.uiKey) { RevealStore() }
+
                     MessageRow(
                         modifier = modifier,
-                        message = msg
+                        message = msg,
+                        revealStore = revealStore
                     )
                 }
             }

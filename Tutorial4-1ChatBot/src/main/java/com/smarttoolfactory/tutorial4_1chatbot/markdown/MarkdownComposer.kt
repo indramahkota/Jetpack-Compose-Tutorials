@@ -1,13 +1,13 @@
 package com.smarttoolfactory.tutorial4_1chatbot.markdown
 
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -21,7 +21,6 @@ import com.halilibo.richtext.markdown.node.AstTableRoot
 import com.halilibo.richtext.ui.RichTextScope
 import com.smarttoolfactory.tutorial4_1chatbot.samples.CustomTable
 import com.smarttoolfactory.tutorial4_1chatbot.samples.rectUtils.LineSegmentation
-import kotlin.collections.set
 
 /**
  * Build a stable key for the current node based on its position in the AST tree.
@@ -50,10 +49,9 @@ private fun AstNode.stablePathKey(): String {
 internal fun MarkdownComposer(
     markdown: String,
     debug: Boolean = false,
+    animate: Boolean = true,
     segmentation: LineSegmentation = LineSegmentation.None,
-    onCompleted: () -> Unit = {},
-    revealStore: RevealStore? = null,
-    animate: Boolean = true
+    onCompleted: () -> Unit = {}
 ) {
     val commonmarkAstNodeParser: CommonmarkAstNodeParser = remember {
         CommonmarkAstNodeParser()
@@ -67,20 +65,6 @@ internal fun MarkdownComposer(
         value = commonmarkAstNodeParser.parse(markdown)
     }
 
-    /**
-     * Persist startIndex OUTSIDE the node composable so it won't reset to 0 when:
-     * - the markdown becomes valid (e.g. ** closes),
-     * - AST is rebuilt,
-     * - paragraph Text() composable gets recreated.
-     *
-     * IMPORTANT: DO NOT key this by markdown for streaming messages.
-     * If revealStore is provided (LazyColumn), use that instead.
-     */
-    val localFallbackStarts = remember { mutableStateMapOf<String, Int>() }
-    val localFallbackCompleted = remember { mutableStateMapOf<String, Boolean>() }
-
-    val startIndexByNodeKey = revealStore?.startIndexByNodeKey ?: localFallbackStarts
-    val completedByNodeKey = revealStore?.completedByNodeKey ?: localFallbackCompleted
 
     val tableBlockNodeComposer: AstBlockNodeComposer = remember {
         object : AstBlockNodeComposer {
@@ -107,21 +91,26 @@ internal fun MarkdownComposer(
                     CustomTable(tableRoot = astNode)
                 } else if (astNode.type is AstParagraph) {
 
+                    /**
+                     * Persist startIndex OUTSIDE the node composable so it won't reset to 0 when:
+                     * - the markdown becomes valid (e.g. ** closes),
+                     * - AST is rebuilt,
+                     * - paragraph Text() composable gets recreated.
+                     */
+                    val startIndexByNodeKey = remember(markdown) {
+                        mutableStateMapOf<String, Int>()
+                    }
+
                     val nodeKey = remember(astNode) { astNode.stablePathKey() }
 
-                    val startIndexForNode = startIndexByNodeKey[nodeKey] ?: 0
+                    val startIndexForNode = startIndexByNodeKey[nodeKey] ?: -1
 
 //                    println("✅ nodeKey: $nodeKey, startIndex: $startIndexForNode")
-
-                    var completedUi by remember { mutableStateOf(false) }
-
-                    val alreadyCompleted = completedByNodeKey[nodeKey] == true
-                    val shouldAnimate = animate && !alreadyCompleted
 
                     MarkdownFadeInRichText(
                         modifier = Modifier.border(
                             2.dp,
-                            if (completedUi || alreadyCompleted) Color.Magenta else Color.Cyan
+                            if (animate) Color.Cyan else Color.Magenta
                         ),
                         astNode = astNode,
                         segmentation = segmentation,
@@ -133,12 +122,117 @@ internal fun MarkdownComposer(
                             startIndexByNodeKey[nodeKey] = maxOf(old, newStart)
                         },
                         onCompleted = {
-                            completedByNodeKey[nodeKey] = true
-                            completedUi = true
                             onCompleted()
                         },
-                        animate = shouldAnimate
+                        animate = animate
                     )
+                }
+            }
+        }
+    }
+
+    astRootNode?.let { astNode ->
+        RichTextScope.BasicMarkdown(astNode, tableBlockNodeComposer)
+    }
+}
+
+@Composable
+internal fun MarkdownComposer(
+    markdown: String,
+    debug: Boolean = false,
+    revealStore: RevealStore? = null,
+    animate: Boolean = true,
+    messageKey: String? = null,
+    segmentation: LineSegmentation = LineSegmentation.None,
+    onCompleted: () -> Unit = {}
+) {
+    val commonmarkAstNodeParser: CommonmarkAstNodeParser = remember {
+        CommonmarkAstNodeParser()
+    }
+
+    val astRootNode by produceState<AstNode?>(
+        initialValue = null,
+        key1 = commonmarkAstNodeParser,
+        key2 = markdown
+    ) {
+        value = commonmarkAstNodeParser.parse(markdown)
+    }
+
+    val tableBlockNodeComposer: AstBlockNodeComposer = remember {
+        object : AstBlockNodeComposer {
+
+            override fun predicate(astBlockNodeType: AstBlockNodeType): Boolean {
+                // Intercept tables
+                val isTable = astBlockNodeType == AstTableRoot
+                // Intercept Text
+                val isText = astBlockNodeType == AstParagraph
+                return isTable || isText
+            }
+
+            @Composable
+            override fun RichTextScope.Compose(
+                astNode: AstNode,
+                visitChildren: @Composable ((AstNode) -> Unit)
+            ) {
+
+                if (animate) {
+                    val localFallbackStarts = remember { mutableStateMapOf<String, Int>() }
+                    val localFallbackCompleted = remember { mutableStateMapOf<String, Boolean>() }
+
+                    val startIndexByNodeKey =
+                        revealStore?.startIndexByNodeKey ?: localFallbackStarts
+                    val completedByNodeKey =
+                        revealStore?.completedByNodeKey ?: localFallbackCompleted
+
+                    val rawNodeKey = remember(astNode) { astNode.stablePathKey() }
+
+                    // ✅ CRITICAL: prefix by messageKey so different messages don't collide
+                    // If messageKey is null, fall back to rawNodeKey (preview/non-lazy uses)
+                    val nodeKey = if (messageKey != null) {
+                        "$messageKey|$rawNodeKey"
+                    } else {
+                        rawNodeKey
+                    }
+
+                    val startIndexForNode = startIndexByNodeKey[nodeKey] ?: 0
+
+//                    println("✅ nodeKey: $nodeKey, startIndex: $startIndexForNode")
+
+                    val alreadyCompleted = completedByNodeKey[nodeKey] == true
+                    val shouldAnimate = animate && !alreadyCompleted
+
+                    if (astNode.type is AstTableRoot) {
+                        CustomTable(tableRoot = astNode)
+                    } else if (astNode.type is AstParagraph) {
+                        MarkdownFadeInRichText(
+                            modifier = Modifier.border(
+                                2.dp,
+                                if (shouldAnimate) Color.Cyan else Color.Magenta
+                            ),
+                            astNode = astNode,
+                            segmentation = segmentation,
+                            debug = debug,
+                            startIndex = startIndexForNode,
+                            onStartIndexChange = { newStart ->
+                                // monotonic to avoid regressions
+                                val old = startIndexByNodeKey[nodeKey] ?: 0
+                                startIndexByNodeKey[nodeKey] = maxOf(old, newStart)
+                            },
+                            onCompleted = {
+                                completedByNodeKey[nodeKey] = true
+                                onCompleted()
+                            },
+                            animate = shouldAnimate
+                        )
+                    }
+                } else {
+                    if (astNode.type is AstTableRoot) {
+                        CustomTable(tableRoot = astNode)
+                    } else if (astNode.type is AstParagraph) {
+                        Box(Modifier.border(2.dp, Color(0xff546E7A))) {
+                            BasicMarkdown(astNode)
+                        }
+                    }
                 }
             }
         }

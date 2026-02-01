@@ -26,7 +26,7 @@ class MainActivity : ComponentActivity() {
                 textStyleProvider = {
                     TextStyle.Default.copy(
                         fontSize = 18.sp,
-                        lineHeight = 22.sp
+                        lineHeight = 24.sp
                     )
                 }
             ) {
