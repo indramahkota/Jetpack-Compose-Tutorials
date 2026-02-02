@@ -7,6 +7,7 @@ import com.smarttoolfactory.tutorial4_1chatbot.data.ChatCompletionsRequest
 import com.smarttoolfactory.tutorial4_1chatbot.domain.StreamChatCompletionUseCase
 import com.smarttoolfactory.tutorial4_1chatbot.domain.StreamSignal
 import com.smarttoolfactory.tutorial4_1chatbot.util.deltasToMarkdownTokensWithDelay
+import com.smarttoolfactory.tutorial4_1chatbot.util.deltasToWordStableMarkdownTokensWithDelay
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -197,7 +198,7 @@ class ChatViewModel @Inject constructor(
                 .filterIsInstance<StreamSignal.Delta>()
                 .map { it.text }
                 // 🔥Functions to split deltas to chunks after delay
-                .deltasToMarkdownTokensWithDelay(delayMillis = 30)
+                .deltasToWordStableMarkdownTokensWithDelay(delayMillis = 16)
                 .onEach { chunk ->
                     updateMessageById(initialMessage.uiKey) { message ->
                         message.copy(
