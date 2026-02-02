@@ -1,7 +1,5 @@
 package com.smarttoolfactory.tutorial4_1chatbot.markdown
 
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
@@ -137,22 +135,25 @@ fun RichTextScope.MarkdownFadeInRichText(
 
     val jobsByRectId = remember { mutableStateMapOf<String, Job>() }
 
-    // ✅ pending must match scheduled jobs
+    // pending must match scheduled jobs
     var pendingRects by remember { mutableIntStateOf(0) }
 
-    // ✅ text fully revealed gate (index-based)
+    // text fully revealed gate (index-based)
     var fullyRevealed by remember { mutableStateOf(false) }
 
-    // ✅ per-laid-out-length completion latch
+    // per-laid-out-length completion latch
     var lastLaidOutTextLen by remember { mutableIntStateOf(-1) }
     var completedFiredForLen by remember { mutableIntStateOf(-1) }
 
-    // ✅ track previous laid out text length and the line of its last char
+    // track previous laid out text length and the line of its last char
     var prevTextLen by remember { mutableIntStateOf(0) }
     var prevAnchorLine by remember { mutableIntStateOf(-1) }
 
-    // ✅ track previous anchor glyph box (for patching without removing any rect)
+    // track previous anchor glyph box (for patching without removing any rect)
     var prevAnchorBox by remember { mutableStateOf<Rect?>(null) }
+
+    // O(1) membership for wrap rect ids (avoids rectList.any { ... })
+    val wrapRectIds = remember { HashSet<String>(128) }
 
     // Dispatcher: schedule animations; pending increments ONLY for scheduled jobs
     LaunchedEffect(Unit) {
@@ -185,6 +186,8 @@ fun RichTextScope.MarkdownFadeInRichText(
                             pendingRects = (pendingRects - 1).coerceAtLeast(0)
                             if (!debug) {
                                 rectList.remove(rectWithAnimation)
+                                // Keep wrap set in sync when the removed rect is a wrap rect
+                                wrapRectIds.remove(rectWithAnimation.id)
                             }
                             jobsByRectId.remove(id)
                         }
@@ -242,13 +245,13 @@ fun RichTextScope.MarkdownFadeInRichText(
                 val textLen = laidOutText.length
                 val endIndex = textLen - 1
 
-                // ✅ Always update length state (even when empty)
+                // Always update length state (even when empty)
                 lastLaidOutTextLen = textLen
 
                 // Compute safeStartIndex even if empty; clamp to [0, textLen]
                 val safeStartIndex = startIndex.coerceIn(0, textLen)
 
-                // ✅ Always update fullyRevealed deterministically
+                // Always update fullyRevealed deterministically
                 // If empty text => endIndex = -1 => safeStartIndex (>=0) > -1 => fullyRevealed = true
                 fullyRevealed = safeStartIndex > endIndex
 
@@ -272,30 +275,40 @@ fun RichTextScope.MarkdownFadeInRichText(
                 val didWrapDown = (prevAnchorLine >= 0 && newAnchorLine > prevAnchorLine)
 
                 if (didWrapDown) {
-                    // ✅ DO NOT MODIFY EXISTING RECT.
+                    // DO NOT MODIFY EXISTING RECT.
                     // Add an extra rect on the new line that uses the SAME animatable as the rect that previously covered the anchor.
                     val oldBox = prevAnchorBox
                     if (oldBox != null) {
 
-                        val victimIndex = rectList.indices
-                            .asSequence()
-                            .map { i ->
-                                val r = rectList[i].rect
-                                val area = intersectionArea(r, oldBox)
-                                val centerDist = abs(r.center.x - oldBox.center.x)
-                                Triple(i, area, centerDist)
+                        //  Bound victim scan to recent rects only (victim is almost always among newest)
+                        val scanWindow = 20
+                        val start = (rectList.size - scanWindow).coerceAtLeast(0)
+
+                        var bestIndex: Int? = null
+                        var bestCenterDist = Float.POSITIVE_INFINITY
+                        var bestWidth = Float.POSITIVE_INFINITY
+
+                        for (index in rectList.lastIndex downTo start) {
+                            val rect = rectList[index].rect
+                            val area = intersectionArea(rect, oldBox)
+                            if (area <= 0f) continue
+
+                            val centerDist = abs(rect.center.x - oldBox.center.x)
+                            val width = rect.width
+
+                            if (centerDist < bestCenterDist ||
+                                (centerDist == bestCenterDist && width < bestWidth)
+                            ) {
+                                bestCenterDist = centerDist
+                                bestWidth = width
+                                bestIndex = index
                             }
-                            .filter { (_, area, _) -> area > 0f }
-                            .minWithOrNull(
-                                compareBy<Triple<Int, Float, Float>>(
-                                    { it.third },                     // closest centerX first ✅
-                                    { rectList[it.first].rect.width } // then smallest width ✅
-                                )
-                            )
-                            ?.first
+                        }
+
+                        val victimIndex = bestIndex
 
                         if (victimIndex != null) {
-                            // ✅ Recompute rects only from start of the NEW line to the end
+                            // Recompute rects only from start of the NEW line to the end
                             val newLineStart = textLayout.getLineStart(newAnchorLine).coerceIn(0, endIndex)
                             val newRects = calculateBoundingRectList(
                                 textLayoutResult = textLayout,
@@ -304,23 +317,28 @@ fun RichTextScope.MarkdownFadeInRichText(
                                 segmentation = segmentation
                             )
 
-                            // ✅ Find the rect on the NEW line that intersects the anchor box position (same offset) most closely
+                            // Find the rect on the NEW line that intersects the anchor box position (same offset) most closely
                             val newAnchorBox = safeBoxOrCursor(textLayout, anchorOffset)
-                            val replacementRect = newRects
-                                .asSequence()
-                                .map { r ->
-                                    val area = intersectionArea(r, newAnchorBox)
-                                    val centerDist = abs(r.center.x - newAnchorBox.center.x)
-                                    Triple(r, area, centerDist)
+
+                            var replacementRect: Rect? = null
+                            var bestNewCenterDist = Float.POSITIVE_INFINITY
+                            var bestNewWidth = Float.POSITIVE_INFINITY
+
+                            for (r in newRects) {
+                                val area = intersectionArea(r, newAnchorBox)
+                                if (area <= 0f) continue
+
+                                val centerDist = abs(r.center.x - newAnchorBox.center.x)
+                                val width = r.width
+
+                                if (centerDist < bestNewCenterDist ||
+                                    (centerDist == bestNewCenterDist && width < bestNewWidth)
+                                ) {
+                                    bestNewCenterDist = centerDist
+                                    bestNewWidth = width
+                                    replacementRect = r
                                 }
-                                .filter { (_, area, _) -> area > 0f }
-                                .minWithOrNull(
-                                    compareBy<Triple<Rect, Float, Float>>(
-                                        { it.third },      // closest centerX first ✅
-                                        { it.first.width } // then smallest width ✅
-                                    )
-                                )
-                                ?.first
+                            }
 
                             if (replacementRect != null) {
                                 val victim = rectList[victimIndex]
@@ -329,7 +347,8 @@ fun RichTextScope.MarkdownFadeInRichText(
                                 val wrapId =
                                     "${victim.id}_wrap_${replacementRect.top}_${replacementRect.left}_${replacementRect.right}_${replacementRect.bottom}"
 
-                                val alreadyExists = rectList.any { it.id == wrapId }
+                                // O(1) membership check
+                                val alreadyExists = wrapRectIds.contains(wrapId)
                                 if (!alreadyExists) {
                                     // Add rect that shares animatable with victim (NO NEW ANIMATION JOB)
                                     rectList.add(
@@ -341,6 +360,8 @@ fun RichTextScope.MarkdownFadeInRichText(
                                             animatable = victim.animatable
                                         )
                                     )
+
+                                    wrapRectIds.add(wrapId)
 
                                     // Mark as "already scheduled" so it never gets its own job later
                                     jobsByRectId[wrapId] = jobsByRectId[victim.id] ?: Job().apply { cancel() }
