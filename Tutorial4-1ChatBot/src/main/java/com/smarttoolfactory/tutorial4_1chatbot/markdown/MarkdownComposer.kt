@@ -107,17 +107,17 @@ internal fun MarkdownComposer(
                         CustomTable(tableRoot = astNode)
                     } else if (astNode.type is AstParagraph) {
                         MarkdownFadeInRichText(
-                            modifier = if (debug.not()) {
-                                Modifier
-                            } else {
-                                Modifier.border(
-                                    2.dp,
-                                    if (shouldAnimate) Color.Cyan else Color.Magenta
-                                )
-                            },
+//                            modifier = if (debug.not()) {
+//                                Modifier
+//                            } else {
+//                                Modifier.border(
+//                                    2.dp,
+//                                    if (shouldAnimate) Color.Cyan else Color.Magenta
+//                                )
+//                            },
                             astNode = astNode,
                             segmentation = segmentation,
-                            debug = debug,
+                            debug = true,
                             startIndex = startIndexForNode,
                             onStartIndexChange = { newStart ->
                                 val old = startIndexByNodeKey[nodeKey] ?: 0
@@ -127,7 +127,7 @@ internal fun MarkdownComposer(
                                 completedByNodeKey[nodeKey] = true
                                 onCompleted()
                             },
-                            animate = shouldAnimate
+                            animate = true
                         )
                     }
                 } else {

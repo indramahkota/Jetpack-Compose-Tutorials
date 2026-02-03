@@ -45,12 +45,14 @@ fun TrailFadeInText1Preview() {
 
     val deltas = remember {
         listOf(
-            "defined ", "by volatility, complexity", ", and acce", "lerating\n",
+            "defined ", "by volatility, complexity", ", and acce", "lerating\n" ,
+                    " hello world " ,
+                    " something hello"
         )
     }
 
     LaunchedEffect(Unit) {
-        delay(1000)
+        delay(16)
         deltas.forEach {
             chunkText += it
             delay(700)
