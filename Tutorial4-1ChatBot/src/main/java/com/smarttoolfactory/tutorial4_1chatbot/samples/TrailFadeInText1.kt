@@ -1,5 +1,6 @@
 package com.smarttoolfactory.tutorial4_1chatbot.samples
 
+import android.R.id.message
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,6 +21,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.TextLayoutResult
@@ -27,45 +30,61 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.smarttoolfactory.tutorial4_1chatbot.samples.rectUtils.RectWithColor
-import com.smarttoolfactory.tutorial4_1chatbot.samples.rectUtils.calculateBoundingRecWithColorList
+import com.halilibo.richtext.ui.BasicRichText
+import com.halilibo.richtext.ui.RichTextThemeProvider
+import com.smarttoolfactory.tutorial4_1chatbot.markdown.MarkdownComposer
+import com.smarttoolfactory.tutorial4_1chatbot.samples.rectUtils.calculateBoundingRectList
+import com.smarttoolfactory.tutorial4_1chatbot.ui.component.MarkDownStyle
 import kotlinx.coroutines.delay
 
 @Preview
 @Composable
 fun TrailFadeInText1Preview() {
-    var text by remember {
-        mutableStateOf("")
-    }
-
-    var chunkText by remember {
-        mutableStateOf("")
-    }
+    var text by remember { mutableStateOf("") }
+    var chunkText by remember { mutableStateOf("") }
 
     val deltas = remember {
         listOf(
-            "defined ", "by volatility, complexity", ", and accelerating\n",
-            "change. Markets evolve ", "faster than planning\n",
-            "Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book. It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged. ",
-            "cycles", "customer", " expectations shift", " continuously."
+            "defined ", "by volatility, complexity", ", and acce", "lerating\n",
         )
     }
 
     LaunchedEffect(Unit) {
         delay(1000)
         deltas.forEach {
-//            println("Delta: $it")
             chunkText += it
-            delay(1000)
+            delay(700)
         }
     }
 
     Column(
-        modifier = Modifier.fillMaxSize().systemBarsPadding().padding(16.dp)
+        modifier = Modifier
+            .fillMaxSize()
+            .systemBarsPadding()
+            .padding(16.dp)
     ) {
-//        TrailFadeInText(text = chunkText)
 
-        TrailFadeInText(text = "Hello\nWorld")
+        RichTextThemeProvider(
+            // Overrides every other style in BasicRichText
+            textStyleProvider = {
+                TextStyle.Default.copy(
+                    fontSize = 18.sp,
+                    lineHeight = 22.sp
+                )
+            }
+        ) {
+            BasicRichText(
+                modifier = Modifier,
+                style = MarkDownStyle.DefaultTextStyle
+            ) {
+                MarkdownComposer(
+                    markdown = chunkText,
+                    debug = true,
+                    animate = true,
+                )
+            }
+
+        }
 
         Spacer(modifier = Modifier.weight(1f))
 
@@ -74,15 +93,11 @@ fun TrailFadeInText1Preview() {
                 .imePadding()
                 .fillMaxWidth(),
             value = text,
-            onValueChange = {
-                text = it
-            }
+            onValueChange = { text = it }
         )
         Button(
             modifier = Modifier.fillMaxWidth(),
-            onClick = {
-                chunkText += text
-            }
+            onClick = { chunkText += text }
         ) {
             Text("Append")
         }
@@ -93,22 +108,15 @@ fun TrailFadeInText1Preview() {
 private fun TrailFadeInText(
     modifier: Modifier = Modifier,
     text: String,
-    start: Int = 0,
-    end: Int = text.lastIndex,
     style: TextStyle = TextStyle.Default.copy(fontSize = 18.sp)
 ) {
+    // Tracks "what we consider already processed"
+    var committedStartIndex by remember { mutableIntStateOf(0) }
 
-    var startIndex by remember {
-        mutableIntStateOf(start)
-    }
+    // Tracks previous full text length, to detect append + compute appendStart
+    var lastTextLen by remember { mutableIntStateOf(0) }
 
-    var endIndex by remember {
-        mutableIntStateOf(end)
-    }
-
-    val rectList = remember {
-        mutableStateListOf<RectWithColor>()
-    }
+    val rectList = remember { mutableStateListOf<Rect>() }
 
     Text(
         modifier = modifier
@@ -116,42 +124,59 @@ private fun TrailFadeInText(
             .graphicsLayer()
             .drawWithContent {
                 drawContent()
-                rectList.forEach { rectWithAnimation ->
+                rectList.forEach { r ->
                     drawRect(
-                        color = rectWithAnimation.color,
-                        topLeft = rectWithAnimation.rect.topLeft,
-                        size = rectWithAnimation.rect.size,
+                        color = Color.Red,
+                        topLeft = r.topLeft,
+                        size = r.size,
                         style = Stroke(2.dp.toPx())
                     )
                 }
             },
-        onTextLayout = { textLayout: TextLayoutResult ->
-            endIndex = text.lastIndex
-
-            if (text.isNotEmpty()) {
-
-                println("Text: $text, startIndex: $startIndex, endIndex: $endIndex")
-
-                val newList: List<RectWithColor> = calculateBoundingRecWithColorList(
-                    textLayoutResult = textLayout,
-                    startIndex = startIndex,
-                    endIndex = endIndex
-                )
-
-//                val newList: List<RectWithColor> = computeDiffRects(
-//                    layout = textLayout,
-//                    start = startIndex,
-//                    endExclusive = endIndex + 1
-//                ).map {
-//                    RectWithColor(color = randomColor(), rect = it)
-//                }
-
-                rectList.addAll(newList)
-
-                startIndex = endIndex + 1
-            }
-        },
         text = text,
-        style = style
+        style = style,
+        onTextLayout = { layout: TextLayoutResult ->
+            if (text.isEmpty()) {
+                rectList.clear()
+                committedStartIndex = 0
+                lastTextLen = 0
+                return@Text
+            }
+
+            val textLen = text.length
+            val endIndex = textLen - 1
+
+            // ✅ Append start is the previous length (where new chars begin)
+            // (If text shrank, treat as full recompute)
+            val appendStart = if (textLen >= lastTextLen) lastTextLen else 0
+
+            // ✅ Reflow anchor: character right before appended text
+            // If appendStart == 0, anchor is invalid => recompute from 0
+            val reflowStart = if (appendStart > 0) {
+                val anchor = (appendStart - 1).coerceIn(0, endIndex)
+                val anchorLine = layout.getLineForOffset(anchor)
+                layout.getLineStart(anchorLine) // start of the line that will reflow
+            } else {
+                0
+            }
+
+            // We must include moved text, so compute from reflowStart
+            val computeStart = reflowStart.coerceIn(0, endIndex)
+
+            // Debug: replace instead of accumulating duplicates
+            rectList.clear()
+
+            val newRects = calculateBoundingRectList(
+                textLayoutResult = layout,
+                startIndex = computeStart,
+                endIndex = endIndex
+            )
+
+            rectList.addAll(newRects)
+
+            // Mark progress as committed; next time appendStart will be lastTextLen
+            committedStartIndex = endIndex + 1
+            lastTextLen = textLen
+        }
     )
 }
