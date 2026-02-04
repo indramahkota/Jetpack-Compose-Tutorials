@@ -76,9 +76,18 @@ fun MarkdownFadeInRectsWrapDebugPreview() {
         )
     }
 
+    val deltas2 = remember {
+        listOf(
+            "defined ", "by volatility, complexity", ", and accelerating\n",
+            "change. Markets evolve ", "faster than planning\n",
+            "Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book. It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged. ",
+            "cycles", "customer", " expectations shift", " continuously."
+        )
+    }
+
     LaunchedEffect(Unit) {
         delay(200)
-        deltas.forEachIndexed { index, s ->
+        deltas2.forEachIndexed { index, s ->
             chunkText += s
             // bigger delays make wrap events obvious
             delay(if (index < 3) 600 else 450)
@@ -101,9 +110,11 @@ fun MarkdownFadeInRectsWrapDebugPreview() {
             lingerInMillis = 90L,
         )
 
+        Spacer(Modifier.height(16.dp))
+
         RichTextThemeProvider(
             textStyleProvider = {
-                TextStyle.Default.copy(fontSize = 16.sp)
+                TextStyle.Default.copy(fontSize = 18.sp)
             }
         ) {
             MarkdownComposer(
@@ -112,6 +123,7 @@ fun MarkdownFadeInRectsWrapDebugPreview() {
             )
         }
 
+        Spacer(Modifier.weight(1f))
 
         OutlinedTextField(
             modifier = Modifier
