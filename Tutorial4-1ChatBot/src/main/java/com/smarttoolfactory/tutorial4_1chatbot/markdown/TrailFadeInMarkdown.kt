@@ -155,6 +155,9 @@ fun RichTextScope.MarkdownFadeInRichText(
     // O(1) membership for wrap rect ids (avoids rectList.any { ... })
     val wrapRectIds = remember { HashSet<String>(128) }
 
+    // O(1) membership for existing rect ids (avoid creating RectWithAnimation objects that are guaranteed duplicates)
+    val knownRectIds = remember { HashSet<String>(2048) }
+
     // Dispatcher: schedule animations; pending increments ONLY for scheduled jobs
     LaunchedEffect(Unit) {
         for (batch in rectBatchChannel) {
@@ -188,6 +191,7 @@ fun RichTextScope.MarkdownFadeInRichText(
                                 rectList.remove(rectWithAnimation)
                                 // Keep wrap set in sync when the removed rect is a wrap rect
                                 wrapRectIds.remove(rectWithAnimation.id)
+                                knownRectIds.remove(rectWithAnimation.id)
                             }
                             jobsByRectId.remove(id)
                         }
@@ -241,6 +245,33 @@ fun RichTextScope.MarkdownFadeInRichText(
                     return if (box.width <= 0f) layout.getCursorRect(offset) else box
                 }
 
+                fun cancelAndRemoveRectsFromLine(line: Int) {
+                    val lineTop = textLayout.getLineTop(line)
+
+                    // Remove only rects that are on/under this line AND still animating (masking).
+                    // This fixes out-of-order reveals when a delta wraps and changes line breaks.
+                    val victimIds = ArrayList<String>(32)
+
+                    rectList.forEach { item ->
+                        val isAnimating = item.animatable.value < 1f
+                        if (isAnimating && item.rect.top >= lineTop) {
+                            victimIds.add(item.id)
+                        }
+                    }
+
+                    if (victimIds.isEmpty()) return
+
+                    victimIds.forEach { id ->
+                        jobsByRectId[id]?.cancel()
+                    }
+
+                    rectList.removeAll { it.id in victimIds }
+                    victimIds.forEach { id ->
+                        knownRectIds.remove(id)
+                        wrapRectIds.remove(id)
+                    }
+                }
+
                 val laidOutText = textLayout.layoutInput.text
                 val textLen = laidOutText.length
                 val endIndex = textLen - 1
@@ -272,170 +303,57 @@ fun RichTextScope.MarkdownFadeInRichText(
                 // Anchor = last char of PREVIOUS text (tail that can wrap)
                 val anchorOffset = (prevTextLen - 1).coerceIn(0, endIndex)
                 val newAnchorLine = if (endIndex >= 0) textLayout.getLineForOffset(anchorOffset) else -1
-
-                // ✅ tighter wrap check: must move DOWN in Y by a meaningful amount (avoids false positives)
-                val newAnchorBox = if (anchorOffset >= 0) safeBoxOrCursor(textLayout, anchorOffset) else null
-                val oldAnchorBox = prevAnchorBox
-
-                val movedDownEnough = run {
-                    if (oldAnchorBox == null || newAnchorBox == null) false
-                    else {
-                        // use previous line height as scale (tolerates font changes/markdown)
-                        val prevLine = prevAnchorLine
-                        val lineHeight =
-                            if (prevLine >= 0) (textLayout.getLineBottom(prevLine) - textLayout.getLineTop(prevLine))
-                            else (newAnchorBox.height)
-
-                        val dy = newAnchorBox.top - oldAnchorBox.top
-                        dy > (lineHeight * 0.35f) // tune 0.25..0.5
-                    }
-                }
-
-                val didWrapDown = (prevAnchorLine >= 0 && newAnchorLine > prevAnchorLine && movedDownEnough)
+                val didWrapDown = (prevAnchorLine >= 0 && newAnchorLine > prevAnchorLine)
 
                 if (didWrapDown) {
-                    // DO NOT MODIFY EXISTING RECT.
-                    // Add an extra rect on the new line that uses the SAME animatable as the rect that previously covered the anchor.
-                    val oldBox = prevAnchorBox
-                    if (oldBox != null) {
-
-                        //  Bound victim scan to recent rects only (victim is almost always among newest)
-                        val scanWindow = 20
-                        val start = (rectList.size - scanWindow).coerceAtLeast(0)
-
-                        var bestIndex: Int? = null
-                        var bestCenterDist = Float.POSITIVE_INFINITY
-                        var bestWidth = Float.POSITIVE_INFINITY
-
-                        for (index in rectList.lastIndex downTo start) {
-                            val rect = rectList[index].rect
-                            val area = intersectionArea(rect, oldBox)
-                            if (area <= 0f) continue
-
-                            val centerDist = abs(rect.center.x - oldBox.center.x)
-                            val width = rect.width
-
-                            if (centerDist < bestCenterDist ||
-                                (centerDist == bestCenterDist && width < bestWidth)
-                            ) {
-                                bestCenterDist = centerDist
-                                bestWidth = width
-                                bestIndex = index
-                            }
-                        }
-
-                        val victimIndex = bestIndex
-
-                        if (victimIndex != null) {
-                            // Recompute rects only from start of the NEW line to the end
-                            val newLineStart = textLayout.getLineStart(newAnchorLine).coerceIn(0, endIndex)
-                            val newRects = calculateBoundingRectList(
-                                textLayoutResult = textLayout,
-                                startIndex = newLineStart,
-                                endIndex = endIndex,
-                                segmentation = segmentation
-                            )
-
-                            // Find the rect on the NEW line that intersects the anchor box position (same offset) most closely
-                            val anchorBoxForNew = newAnchorBox ?: safeBoxOrCursor(textLayout, anchorOffset)
-
-                            var replacementRect: Rect? = null
-                            var bestNewCenterDist = Float.POSITIVE_INFINITY
-                            var bestNewWidth = Float.POSITIVE_INFINITY
-
-                            for (r in newRects) {
-                                val area = intersectionArea(r, anchorBoxForNew)
-                                if (area <= 0f) continue
-
-                                val centerDist = abs(r.center.x - anchorBoxForNew.center.x)
-                                val width = r.width
-
-                                if (centerDist < bestNewCenterDist ||
-                                    (centerDist == bestNewCenterDist && width < bestNewWidth)
-                                ) {
-                                    bestNewCenterDist = centerDist
-                                    bestNewWidth = width
-                                    replacementRect = r
-                                }
-                            }
-
-                            if (replacementRect != null) {
-                                val victim = rectList[victimIndex]
-
-                                // New id so it doesn't collide with existing / future produced rect ids
-                                val wrapId =
-                                    "${victim.id}_wrap_${replacementRect.top}_${replacementRect.left}_${replacementRect.right}_${replacementRect.bottom}"
-
-                                // O(1) membership check
-                                val alreadyExists = wrapRectIds.contains(wrapId)
-                                if (!alreadyExists) {
-                                    // Add rect that shares animatable with victim (NO NEW ANIMATION JOB)
-                                    rectList.add(
-                                        RectWithAnimation(
-                                            id = wrapId,
-                                            rect = replacementRect,
-                                            startIndex = victim.startIndex,
-                                            endIndex = victim.endIndex,
-                                            animatable = victim.animatable
-                                        )
-                                    )
-
-                                    wrapRectIds.add(wrapId)
-
-                                    // Mark as "already scheduled" so it never gets its own job later
-                                    jobsByRectId[wrapId] = jobsByRectId[victim.id] ?: Job().apply { cancel() }
-                                }
-                            }
-                        }
-                    }
+                    // When a delta moves to a new line, previously created rects on that line become stale.
+                    // Cancel and remove ONLY rects from that line and below that are still animating,
+                    // then recalculate from start of that line and animate them in correct order.
+                    cancelAndRemoveRectsFromLine(newAnchorLine)
                 }
 
                 // If wrapped, restart from start of the NEW line. Otherwise continue from safeStartIndex.
                 val computeStart: Int =
                     if (didWrapDown) textLayout.getLineStart(newAnchorLine) else safeStartIndex
 
-                // ✅ Avoid building RectWithAnimation for guaranteed duplicates:
-                // Build membership set once, then skip while mapping.
-                val existingRectIds = HashSet<String>(rectList.size + 32).apply {
-                    rectList.forEach { add(it.id) }
-                }
+                val safeComputeStart = computeStart.coerceIn(0, endIndex)
 
-                val baseStart = computeStart.coerceIn(0, endIndex)
-                val rects = calculateBoundingRectList(
+                // Avoid creating producedRects objects for ones that are guaranteed duplicates by checking the id set during mapping
+                val rawRects = calculateBoundingRectList(
                     textLayoutResult = textLayout,
-                    startIndex = baseStart,
+                    startIndex = safeComputeStart,
                     endIndex = endIndex,
                     segmentation = segmentation
                 )
 
-                val producedRects = ArrayList<RectWithAnimation>(rects.size)
-                for (rect in rects) {
-                    val id = "${computeStart}_${endIndex}_${rect.top}_${rect.left}_${rect.right}_${rect.bottom}"
+                val filtered = ArrayList<RectWithAnimation>(rawRects.size)
+                for (rect in rawRects) {
+                    val id = "${safeComputeStart}_${endIndex}_${rect.top}_${rect.left}_${rect.right}_${rect.bottom}"
 
-                    // skip duplicates early (no object allocation)
-                    if (id in existingRectIds) continue
+                    // Guaranteed duplicates
+                    if (knownRectIds.contains(id)) continue
                     if (jobsByRectId.containsKey(id)) continue
 
-                    existingRectIds.add(id)
+                    knownRectIds.add(id)
 
-                    producedRects.add(
+                    filtered.add(
                         RectWithAnimation(
                             id = id,
                             rect = rect,
-                            startIndex = baseStart,
+                            startIndex = safeComputeStart,
                             endIndex = endIndex
                         )
                     )
                 }
 
-                if (producedRects.isNotEmpty()) {
-                    rectList.addAll(producedRects)
-                    rectBatchChannel.trySend(producedRects)
+                if (filtered.isNotEmpty()) {
+                    rectList.addAll(filtered)
+                    rectBatchChannel.trySend(filtered)
                 }
 
                 prevTextLen = textLen
                 prevAnchorLine = newAnchorLine
-                prevAnchorBox = if (anchorOffset >= 0) (newAnchorBox ?: safeBoxOrCursor(textLayout, anchorOffset)) else null
+                prevAnchorBox = if (anchorOffset >= 0) safeBoxOrCursor(textLayout, anchorOffset) else null
             }
         )
     }
