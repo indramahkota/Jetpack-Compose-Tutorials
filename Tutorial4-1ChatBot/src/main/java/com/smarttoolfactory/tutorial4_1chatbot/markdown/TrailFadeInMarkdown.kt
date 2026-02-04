@@ -148,14 +148,15 @@ fun RichTextScope.MarkdownFadeInRichText(
     var prevTextLen by remember { mutableIntStateOf(0) }
     var prevAnchorLine by remember { mutableIntStateOf(-1) }
 
-    // track previous anchor glyph box (for patching without removing any rect)
-    var prevAnchorBox by remember { mutableStateOf<Rect?>(null) }
-
     // O(1) membership for wrap rect ids (avoids rectList.any { ... })
     val wrapRectIds = remember { HashSet<String>(128) }
 
     // O(1) membership for existing rect ids (avoid creating RectWithAnimation objects that are guaranteed duplicates)
     val knownRectIds = remember { HashSet<String>(2048) }
+
+    // ✅ prevent repeated invalidations for the same wrap churn
+    var lastWrapInvalidatedLine by remember { mutableIntStateOf(-1) }
+    var lastWrapInvalidatedLen by remember { mutableIntStateOf(-1) }
 
     // Dispatcher: schedule animations; pending increments ONLY for scheduled jobs
     LaunchedEffect(Unit) {
@@ -239,35 +240,25 @@ fun RichTextScope.MarkdownFadeInRichText(
             text = richText,
             onTextLayout = { textLayout ->
 
-                fun safeBoxOrCursor(layout: TextLayoutResult, offset: Int): Rect {
-                    val box = layout.getBoundingBox(offset)
-                    return if (box.width <= 0f) layout.getCursorRect(offset) else box
-                }
-
                 fun cancelAndRemoveRectsFromLine(line: Int) {
                     val lineTop = textLayout.getLineTop(line)
 
-                    // Remove only rects that are on/under this line AND still animating (masking).
+                    // Single pass, no allocations: remove only rects on/under this line that are still animating (masking).
                     // This fixes out-of-order reveals when a delta wraps and changes line breaks.
-                    val victimIds = ArrayList<String>(32)
-
-                    rectList.forEach { item ->
+                    for (i in rectList.lastIndex downTo 0) {
+                        val item = rectList[i]
                         val isAnimating = item.animatable.value < 1f
                         if (isAnimating && item.rect.top >= lineTop) {
-                            victimIds.add(item.id)
+                            val id = item.id
+
+                            jobsByRectId[id]?.cancel()
+                            jobsByRectId.remove(id)
+
+                            rectList.removeAt(i)
+
+                            knownRectIds.remove(id)
+                            wrapRectIds.remove(id)
                         }
-                    }
-
-                    if (victimIds.isEmpty()) return
-
-                    victimIds.forEach { id ->
-                        jobsByRectId[id]?.cancel()
-                    }
-
-                    rectList.removeAll { it.id in victimIds }
-                    victimIds.forEach { id ->
-                        knownRectIds.remove(id)
-                        wrapRectIds.remove(id)
                     }
                 }
 
@@ -291,7 +282,6 @@ fun RichTextScope.MarkdownFadeInRichText(
                 if (!hasNewRange) {
                     prevTextLen = textLen
                     prevAnchorLine = if (endIndex >= 0) textLayout.getLineForOffset(endIndex) else -1
-                    prevAnchorBox = if (endIndex >= 0) safeBoxOrCursor(textLayout, endIndex) else null
                     return@Text
                 }
 
@@ -302,13 +292,20 @@ fun RichTextScope.MarkdownFadeInRichText(
                 // Anchor = last char of PREVIOUS text (tail that can wrap)
                 val anchorOffset = (prevTextLen - 1).coerceIn(0, endIndex)
                 val newAnchorLine = if (endIndex >= 0) textLayout.getLineForOffset(anchorOffset) else -1
-                val didWrapDown = (prevAnchorLine >= 0 && newAnchorLine > prevAnchorLine)
+                val didWrapDown = (prevAnchorLine in 0..<newAnchorLine)
 
                 if (didWrapDown) {
                     // When a delta moves to a new line, previously created rects on that line become stale.
                     // Cancel and remove ONLY rects from that line and below that are still animating,
                     // then recalculate from start of that line and animate them in correct order.
-                    cancelAndRemoveRectsFromLine(newAnchorLine)
+                    val shouldInvalidate =
+                        (newAnchorLine != lastWrapInvalidatedLine) || (textLen != lastWrapInvalidatedLen)
+
+                    if (shouldInvalidate) {
+                        cancelAndRemoveRectsFromLine(newAnchorLine)
+                        lastWrapInvalidatedLine = newAnchorLine
+                        lastWrapInvalidatedLen = textLen
+                    }
                 }
 
                 // If wrapped, restart from start of the NEW line. Otherwise continue from safeStartIndex.
@@ -352,20 +349,9 @@ fun RichTextScope.MarkdownFadeInRichText(
 
                 prevTextLen = textLen
                 prevAnchorLine = newAnchorLine
-                prevAnchorBox = if (anchorOffset >= 0) safeBoxOrCursor(textLayout, anchorOffset) else null
             }
         )
     }
-}
-
-private fun intersectionArea(a: Rect, b: Rect): Float {
-    val left = maxOf(a.left, b.left)
-    val top = maxOf(a.top, b.top)
-    val right = minOf(a.right, b.right)
-    val bottom = minOf(a.bottom, b.bottom)
-    val w = (right - left).coerceAtLeast(0f)
-    val h = (bottom - top).coerceAtLeast(0f)
-    return w * h
 }
 
 private fun ContentDrawScope.drawFadeInRects(

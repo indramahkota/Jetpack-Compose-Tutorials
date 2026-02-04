@@ -87,7 +87,7 @@ fun MarkdownFadeInRectsWrapDebugPreview() {
 
     LaunchedEffect(Unit) {
         delay(200)
-        deltas2.forEachIndexed { index, s ->
+        deltas.forEachIndexed { index, s ->
             chunkText += s
             // bigger delays make wrap events obvious
             delay(if (index < 3) 600 else 450)

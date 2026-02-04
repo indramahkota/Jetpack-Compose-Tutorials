@@ -117,7 +117,7 @@ internal fun MarkdownComposer(
 //                            },
                             astNode = astNode,
                             segmentation = segmentation,
-                            debug = true,
+                            debug = false,
                             startIndex = startIndexForNode,
                             onStartIndexChange = { newStart ->
                                 val old = startIndexByNodeKey[nodeKey] ?: 0
