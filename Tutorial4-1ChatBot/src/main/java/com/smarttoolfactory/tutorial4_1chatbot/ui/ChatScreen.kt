@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -22,16 +23,26 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material3.DividerDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -59,10 +70,14 @@ import androidx.compose.ui.unit.coerceAtLeast
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.smarttoolfactory.tutorial4_1chatbot.ui.component.button.JumpToBottomButton
+import com.smarttoolfactory.tutorial4_1chatbot.ui.component.drawer.PushDrawerValue
+import com.smarttoolfactory.tutorial4_1chatbot.ui.component.drawer.PushSideDrawer
+import com.smarttoolfactory.tutorial4_1chatbot.ui.component.drawer.rememberPushDrawerState
 import com.smarttoolfactory.tutorial4_1chatbot.ui.component.input.ChatTextField
 import com.smarttoolfactory.tutorial4_1chatbot.ui.component.message.MessageRow
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.android.awaitFrame
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.max
 
@@ -70,21 +85,26 @@ val contentPaddingTop = 16.dp
 val itemSpacing = 16.dp
 val bottomPadding = 16.dp
 val inputHeight = 48.dp
-val topAppbarHeight = 38.dp
+val topAppbarHeight = 56.dp
 
-val backgroundColor = Color(0xFFFAFAFA)
+val iconColor = Color.White
+val backgroundColor = Color(0xffF5F5F5)
+val brushColor = backgroundColor
+
 val topAppbarBrush = Brush.verticalGradient(
     colors = listOf(
-        backgroundColor.copy(alpha = 1f),
-        backgroundColor.copy(alpha = 0f)
+        brushColor.copy(alpha = 1f),
+        brushColor.copy(alpha = .9f),
+        brushColor.copy(alpha = .7f),
+        brushColor.copy(alpha = .2f)
     )
 )
 
 val inputBrush = Brush.verticalGradient(
     colors = listOf(
-        backgroundColor.copy(alpha = .7f),
-        backgroundColor.copy(alpha = .8f),
-        backgroundColor.copy(alpha = .9f)
+        brushColor.copy(alpha = .7f),
+        brushColor.copy(alpha = .8f),
+        brushColor.copy(alpha = .9f)
     )
 )
 
@@ -149,6 +169,44 @@ private suspend fun LazyListState.scrollToBottomOfIndex(
 @Composable
 fun ChatScreen(
     chatViewModel: ChatViewModel
+) {
+    val drawerState = rememberPushDrawerState(PushDrawerValue.Closed)
+
+    PushSideDrawer(
+        drawerState = drawerState,
+        endDrawerPadding = 56.dp, // like ModalDrawer
+        drawerContent = {
+            Spacer(modifier = Modifier.statusBarsPadding())
+            Text(
+                "Chats",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(16.dp)
+            )
+            HorizontalDivider(
+                Modifier.padding(horizontal = 16.dp),
+                DividerDefaults.Thickness,
+                DividerDefaults.color
+            )
+            Spacer(Modifier.height(8.dp))
+            repeat(10) { i ->
+                Text(
+                    text = "Conversation ${i + 1}",
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                )
+            }
+        }
+    ) { onHamburgerClick ->
+        ChatScreenContent(
+            chatViewModel = chatViewModel,
+            onHamburgerClick = onHamburgerClick
+        )
+    }
+}
+
+@Composable
+fun ChatScreenContent(
+    chatViewModel: ChatViewModel,
+    onHamburgerClick: () -> Unit
 ) {
     val density = LocalDensity.current
 
@@ -220,7 +278,7 @@ fun ChatScreen(
 
     // On start open keyboard on next frame
     LaunchedEffect(Unit) {
-        awaitFrame()
+        delay(200)
         focusRequester.requestFocus()
     }
 
@@ -305,14 +363,49 @@ fun ChatScreen(
 
         TopAppBar(
             modifier = Modifier.height(topAppbarHeight).background(brush = topAppbarBrush),
-            title = {},
+            title = {
+                Text(
+                    modifier = Modifier
+                        .padding(start = 8.dp)
+                        .height(48.dp)
+                        .background(iconColor, RoundedCornerShape(24.dp))
+                        .wrapContentSize()
+                        .padding(horizontal = 16.dp),
+                    text = "Chat",
+                    style = MaterialTheme.typography.titleMedium
+                )
+            },
+            navigationIcon = {
+                IconButton(
+                    modifier = Modifier
+                        .padding(start = 16.dp)
+                        .size(48.dp),
+                    colors = IconButtonDefaults.iconButtonColors(
+                        containerColor = iconColor
+                    ),
+                    onClick = onHamburgerClick
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Menu,
+                        contentDescription = "Menu"
+                    )
+                }
+            },
             actions = {
-                IconButton(onClick = {}) {
+                IconButton(
+                    modifier = Modifier
+                        .padding(end = 16.dp)
+                        .size(48.dp),
+                    colors = IconButtonDefaults.iconButtonColors(
+                        containerColor = iconColor
+                    ),
+                    onClick = {}
+                ) {
                     Icon(imageVector = Icons.Default.Close, contentDescription = null)
                 }
             },
             colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = Color.White.copy(alpha = .6f)
+                containerColor = Color.Transparent
             )
         )
 
@@ -320,11 +413,10 @@ fun ChatScreen(
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .imePadding()
-                .navigationBarsPadding()
         ) {
 
             JumpToBottomButton(
-                modifier = Modifier.align(Alignment.End),
+                modifier = Modifier.align(Alignment.CenterHorizontally),
                 enabled = jumpToBottomButtonEnabled,
                 onClick = {
                     val bottomGapToInputArea = with(density) {
@@ -356,7 +448,6 @@ fun ChatScreen(
                 modifier = Modifier
                     .background(brush = inputBrush)
                     .padding(bottom = bottomPadding, start = 16.dp, end = 16.dp)
-                    .navigationBarsPadding()
                     .heightIn(min = inputHeight)
                     .fillMaxWidth(),
                 focusRequester = focusRequester,
@@ -372,6 +463,13 @@ fun ChatScreen(
                         input = ""
                     }
                 }
+            )
+
+            Spacer(
+                modifier = Modifier
+                    .background(iconColor)
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
             )
         }
 

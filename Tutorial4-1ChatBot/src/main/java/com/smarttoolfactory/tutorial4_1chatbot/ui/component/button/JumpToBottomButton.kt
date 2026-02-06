@@ -59,12 +59,20 @@ internal fun JumpToBottomButton(
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
-
     AnimatedVisibility(
         modifier = modifier,
         visible = enabled,
-        enter = fadeIn(animationSpec = tween(1000)),
-        exit = fadeOut(animationSpec = tween(1000))
+        enter = fadeIn(
+            animationSpec = tween(
+                delayMillis = 500,
+                durationMillis = 1000
+            )
+        ),
+        exit = fadeOut(
+            animationSpec = tween(
+                durationMillis = 1000
+            )
+        )
     ) {
         FloatingActionButton(
             shape = CircleShape,

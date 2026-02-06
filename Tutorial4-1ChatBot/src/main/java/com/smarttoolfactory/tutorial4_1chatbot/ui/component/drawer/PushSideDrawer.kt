@@ -57,13 +57,6 @@ import kotlin.math.roundToInt
 
 enum class PushDrawerValue { Closed, Open }
 
-/**
- * State object similar to Material's DrawerState, but for the "push" drawer:
- * - Content pushes right
- * - Drawer slides in
- * - Scrim only covers pushed content region (not the drawer)
- * - Drag overshoots up to screenWidth during gesture, then settles to canonical openWidth
- */
 @Stable
 class PushDrawerState internal constructor(
     initialValue: PushDrawerValue,
@@ -72,21 +65,21 @@ class PushDrawerState internal constructor(
     var currentValue by mutableStateOf(initialValue)
         private set
 
-    // Canonical open width in px (drawerWidthPx). Used for "fully open" resting position.
+    // Canonical open width in px (computed as screenWidth - endPadding)
     internal var openWidthPx by mutableFloatStateOf(0f)
 
-    // Screen width in px. Used for "overshoot to full screen" during drag.
+    // Screen width in px (used for drag overshoot)
     internal var screenWidthPx by mutableFloatStateOf(0f)
 
-    // 0..screenWidthPx while dragging; settles to 0 or openWidthPx.
-    internal val offsetX = Animatable(if (initialValue == PushDrawerValue.Open) 1f else 0f)
+    // Content translation in px: 0..screenWidthPx during drag, settles to 0 or openWidthPx
+    internal val offsetX = Animatable(0f)
 
     val isOpen: Boolean get() = currentValue == PushDrawerValue.Open
     val isClosed: Boolean get() = currentValue == PushDrawerValue.Closed
 
     /**
-     * Drawer progress relative to canonical open width.
-     * Overshoot (> openWidthPx) still reports progress as 1f.
+     * Progress is relative to canonical open width (openWidthPx).
+     * Overshoot still clamps to 1f.
      */
     val progress: Float
         get() {
@@ -144,23 +137,18 @@ class PushDrawerState internal constructor(
 fun rememberPushDrawerState(
     initialValue: PushDrawerValue = PushDrawerValue.Closed,
     confirmValueChange: (PushDrawerValue) -> Boolean = { true }
-): PushDrawerState {
-    // Saver optional; keep simple for now like your previous snippets.
-    return remember {
-        PushDrawerState(
-            initialValue = initialValue,
-            confirmValueChange = confirmValueChange
-        )
-    }
+): PushDrawerState = remember {
+    PushDrawerState(initialValue, confirmValueChange)
 }
 
 /**
- * ModalDrawer-like API for the "push" drawer.
- *
- * Differences from Material ModalDrawer:
- * - Drawer does affect layout visually because content is translated (pushes).
- * - Scrim only covers the pushed content area; drawer stays above/visible.
- * - Gestures can overshoot to screen width during drag, then settle to canonical open width.
+ * PushDrawer behaves like ChatGPT:
+ * - drawer width is computed like ModalDrawer: screenWidth - endDrawerPadding (default 56.dp)
+ * - content is pushed right
+ * - drawer slides in from the left
+ * - scrim covers ONLY pushed content region (not drawer)
+ * - you can drag anywhere start->end to open; drag can overshoot to full screen width
+ * - on release it settles to Closed(0) or Open(openWidthPx)
  */
 @Composable
 fun PushSideDrawer(
@@ -168,7 +156,7 @@ fun PushSideDrawer(
     modifier: Modifier = Modifier,
     drawerState: PushDrawerState = rememberPushDrawerState(PushDrawerValue.Closed),
     gesturesEnabled: Boolean = true,
-    drawerWidth: Dp = 320.dp,
+    endDrawerPadding: Dp = 56.dp, // ✅ ModalDrawer style
     drawerShape: RoundedCornerShape = RoundedCornerShape(0.dp),
     drawerBackgroundColor: Color = MaterialTheme.colorScheme.surface,
     drawerContentColor: Color = contentColorFor(drawerBackgroundColor),
@@ -180,48 +168,46 @@ fun PushSideDrawer(
 
     BoxWithConstraints(modifier.fillMaxSize()) {
         val screenWidthPx = with(density) { maxWidth.toPx() }
-        val openWidthPx = with(density) { drawerWidth.toPx() }
+        val endPaddingPx = with(density) { endDrawerPadding.toPx() }
 
-        // Like ModalDrawer's SideEffect anchor update: update geometry on size changes.
+        // ModalDrawer width rule: maxWidth - EndDrawerPadding
+        val openWidthPx = (screenWidthPx - endPaddingPx).coerceAtLeast(0f)
+
         SideEffect {
             drawerState.setGeometry(openWidthPx = openWidthPx, screenWidthPx = screenWidthPx)
         }
 
         val draggableState = rememberDraggableState { delta ->
             scope.launch {
-                // Allow overshoot up to full screen width while dragging.
+                // allow overshoot to full screen while dragging
                 drawerState.snapTo(drawerState.offsetX.value + delta)
             }
         }
 
-        // The whole composition is draggable, similar to ModalDrawer's Box(Modifier.anchoredDraggable(...))
         Box(
-            modifier = Modifier
-                .then(
-                    if (gesturesEnabled) {
-                        Modifier.draggable(
-                            state = draggableState,
-                            orientation = Orientation.Horizontal,
-                            onDragStopped = { v -> scope.launch { drawerState.settle(v) } }
-                        )
-                    } else Modifier
-                )
+            modifier = Modifier.then(
+                if (gesturesEnabled) {
+                    Modifier.draggable(
+                        state = draggableState,
+                        orientation = Orientation.Horizontal,
+                        onDragStopped = { v -> scope.launch { drawerState.settle(v) } }
+                    )
+                } else Modifier
+            )
         ) {
-            // Keep top bar INSIDE this content. No separate elevated bar here.
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer {
                         translationX = drawerState.offsetX.value
 
-                        // Optional subtle ChatGPT card effect driven by canonical progress:
-                        val p = drawerState.progress
-                        val s = 1f - 0.02f * p
-                        scaleX = s
-                        scaleY = s
+                        val progress = drawerState.progress
+                        val scale = 1f - 0.02f * progress
+                        scaleX = scale
+                        scaleY = scale
                         shadowElevation = 0f
-                        shape = RoundedCornerShape((16.dp * p).toPx())
-                        clip = p > 0f
+                        shape = RoundedCornerShape((16.dp * progress).toPx())
+                        clip = progress > 0f
                     }
             ) {
                 content({ scope.launch { drawerState.toggle() } })
@@ -239,20 +225,18 @@ fun PushSideDrawer(
                         .fillMaxHeight()
                         .background(scrimColor.copy(alpha = scrimColor.alpha * drawerState.progress))
                         .pointerInput(gesturesEnabled) {
-                            if (gesturesEnabled) {
-                                awaitPointerEventScope {
-                                    while (true) {
-                                        val event = awaitPointerEvent()
-                                        if (event.changes.any { it.pressed }) {
-                                            scope.launch { drawerState.close() }
-                                            event.changes.forEach { it.consume() }
-                                        }
+                            if (!gesturesEnabled) return@pointerInput
+                            awaitPointerEventScope {
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    if (event.changes.any { it.pressed }) {
+                                        scope.launch { drawerState.close() }
+                                        event.changes.forEach { it.consume() }
                                     }
                                 }
                             }
                         }
                         .semantics {
-                            // Mirrors ModalDrawer semantics: dismiss when open
                             if (drawerState.isOpen) {
                                 dismiss {
                                     scope.launch { drawerState.close() }
@@ -263,13 +247,13 @@ fun PushSideDrawer(
                 )
             }
 
-            // --- Drawer sheet (slides in) ---
-            // Slide-in driven by canonical progress (not overshoot).
-            val drawerTranslationX = (-openWidthPx) * (1f - drawerState.progress)
+            // Slide driven by canonical progress (0..1). Overshoot doesn't move it further.
+            val drawerTranslationX = -openWidthPx * (1f - drawerState.progress)
+
             Surface(
                 modifier = Modifier
-                    .width(drawerWidth)
                     .fillMaxHeight()
+                    .width(with(density) { openWidthPx.toDp() })
                     .graphicsLayer { translationX = drawerTranslationX }
                     .semantics { paneTitle = "Navigation drawer" },
                 shape = drawerShape,
@@ -284,14 +268,10 @@ fun PushSideDrawer(
     }
 }
 
-/* -----------------------------------------------------------------------------------------
- *  DEMO
- * ----------------------------------------------------------------------------------------- */
-
 @Composable
 private fun DemoChatScreen(onHamburgerClick: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
-        // Top bar is PART of content; no elevation.
+        // Top bar is part of content; no elevation.
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -319,7 +299,7 @@ private fun DemoScreen() {
 
     PushSideDrawer(
         drawerState = drawerState,
-        drawerWidth = 320.dp,
+        endDrawerPadding = 56.dp, // like ModalDrawer
         drawerContent = {
             Text(
                 "Chats",
