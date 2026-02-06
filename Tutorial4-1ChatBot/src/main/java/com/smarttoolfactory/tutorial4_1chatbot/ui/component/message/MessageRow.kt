@@ -9,19 +9,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.halilibo.richtext.commonmark.Markdown
 import com.halilibo.richtext.ui.BasicRichText
-import com.halilibo.richtext.ui.ListStyle
-import com.halilibo.richtext.ui.RichTextStyle
 import com.smarttoolfactory.tutorial4_1chatbot.markdown.MarkdownComposer
 import com.smarttoolfactory.tutorial4_1chatbot.ui.Message
 import com.smarttoolfactory.tutorial4_1chatbot.ui.MessageStatus
 import com.smarttoolfactory.tutorial4_1chatbot.ui.Role
-import com.smarttoolfactory.tutorial4_1chatbot.ui.component.MarkDownStyle
+import com.smarttoolfactory.tutorial4_1chatbot.markdown.MarkDownStyle
 
 
 @Composable

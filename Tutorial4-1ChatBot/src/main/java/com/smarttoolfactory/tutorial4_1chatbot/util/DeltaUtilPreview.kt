@@ -21,7 +21,7 @@ import androidx.compose.ui.unit.sp
 import com.halilibo.richtext.ui.BasicRichText
 import com.halilibo.richtext.ui.RichTextThemeProvider
 import com.smarttoolfactory.tutorial4_1chatbot.markdown.MarkdownComposer
-import com.smarttoolfactory.tutorial4_1chatbot.ui.component.MarkDownStyle
+import com.smarttoolfactory.tutorial4_1chatbot.markdown.MarkDownStyle
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
