@@ -93,6 +93,7 @@ dependencies {
     implementation(libs.moshi.kotlin)
     ksp(libs.moshi.kotlin.codegen)
     ksp(libs.kotlin.metadata.jvm)
+    implementation(libs.androidx.compose.ui.graphics)
 
     implementation(libs.richtext.ui)
     implementation("com.halilibo.compose-richtext:richtext-commonmark:1.0.0-alpha03") {
