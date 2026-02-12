@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Slider
@@ -144,7 +145,7 @@ private fun DropShadowSample() {
     }
 
     var alpha by remember {
-        mutableFloatStateOf(.5f)
+        mutableFloatStateOf(1f)
     }
 
     Text(text = "radius: ${radius.roundToInt()}")
@@ -183,16 +184,22 @@ private fun DropShadowSample() {
 
     Spacer(modifier = Modifier.height(32.dp))
 
+            val shape =RoundedCornerShape(16.dp)
+//    val shape = CircleShape
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceAround
     ) {
+
+
         Box(
             Modifier
                 .size(120.dp)
                 .dropShadow(
-                    shape = RoundedCornerShape(20.dp),
+                    shape = shape,
                     shadow = Shadow(
+                        brush = Brush.sweepGradient(colors),
                         radius = radius.dp,
                         spread = spread.dp,
                         alpha = alpha,
@@ -201,7 +208,7 @@ private fun DropShadowSample() {
                 )
                 .background(
                     color = Color.White,
-                    shape = RoundedCornerShape(20.dp)
+                    shape = shape
                 )
         ) {
             Text(
@@ -215,75 +222,22 @@ private fun DropShadowSample() {
             Modifier
                 .size(120.dp)
                 .dropShadow(
-                    shape = RoundedCornerShape(20.dp),
+                    shape = shape,
                     shadow = Shadow(
+                        brush = Brush.sweepGradient(colors),
                         radius = radius.dp,
                         spread = spread.dp,
-
                         alpha = alpha,
                         offset = DpOffset(x = offsetX.dp, offsetY.dp)
                     )
                 )
                 .background(
                     color = Color.White.copy(alpha = .7f),
-                    shape = RoundedCornerShape(20.dp)
+                    shape = shape
                 )
         ) {
             Text(
                 "Drop Shadow",
-                modifier = Modifier.align(Alignment.Center),
-                fontSize = 18.sp
-            )
-        }
-    }
-
-    Spacer(modifier = Modifier.height(36.dp))
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceAround
-    ) {
-        Box(
-            Modifier
-                .size(120.dp)
-                .drawShadowCustom(
-                    shape = RoundedCornerShape(20.dp),
-                    alpha = alpha,
-                    radius = radius.dp,
-                    spread = spread.dp,
-                    offset = DpOffset(x = offsetX.dp, offsetY.dp)
-
-                )
-                .background(
-                    color = Color.White,
-                    shape = RoundedCornerShape(20.dp)
-                )
-        ) {
-            Text(
-                "Custom\nDrop Shadow",
-                modifier = Modifier.align(Alignment.Center),
-                fontSize = 18.sp
-            )
-        }
-
-        Box(
-            Modifier
-                .size(120.dp)
-                .drawShadowCustom(
-                    shape = RoundedCornerShape(20.dp),
-                    alpha = alpha,
-                    radius = radius.dp,
-                    spread = spread.dp,
-                    offset = DpOffset(x = offsetX.dp, offsetY.dp)
-
-                )
-                .background(
-                    color = Color.White.copy(alpha = .7f),
-                    shape = RoundedCornerShape(20.dp)
-                )
-        ) {
-            Text(
-                "Custom\nDrop Shadow",
                 modifier = Modifier.align(Alignment.Center),
                 fontSize = 18.sp
             )
@@ -1055,165 +1009,4 @@ private fun GlowingPaintShadowAnimationSample2() {
             )
         }
     }
-}
-
-fun Modifier.drawShadowCustom(
-    shape: Shape,
-    color: Color = Color.Black,
-    radius: Dp,
-    spread: Dp,
-    offset: DpOffset = DpOffset.Zero,
-    alpha: Float = 1f
-) = composed {
-    val paint = remember {
-        Paint().apply {
-            this.style = PaintingStyle.Fill
-            this.color = color
-        }
-    }
-
-    LaunchedEffect(alpha) {
-        paint.alpha = alpha
-    }
-
-    val density = LocalDensity.current
-    val radiusPx: Float
-    val spreadPx: Float
-    val offsetPx: Offset
-
-    with(density) {
-        radiusPx = radius.toPx()
-        spreadPx = spread.toPx()
-        offsetPx = Offset(
-            x = offset.x.toPx(),
-            y = offset.y.toPx()
-        )
-    }
-
-    Modifier
-        .drawWithCache {
-            val outset = spreadPx * 2
-            val shadowWidth = size.width + outset
-            val shadowHeight = size.height + outset
-
-            val outline: Outline =
-                shape.createOutline(Size(shadowWidth, shadowHeight), layoutDirection, this)
-
-            paint.asFrameworkPaint().setMaskFilter(
-                if (radiusPx > 0) {
-                    BlurMaskFilter(
-                        radiusPx,
-                        BlurMaskFilter.Blur.NORMAL
-                    )
-                } else {
-                    null
-                }
-            )
-
-            onDrawBehind {
-                translate(left = offsetPx.x - spreadPx, top = offsetPx.y - spreadPx) {
-                    drawIntoCanvas { canvas ->
-                        canvas.drawOutline(outline, paint)
-                    }
-                }
-            }
-        }
-}
-
-
-// TODO Finish this modifier
-fun Modifier.drawAnimatedShadow(
-    strokeWidth: Dp,
-    shape: Shape,
-    brush: (Size) -> Brush = {
-        Brush.sweepGradient(gradientColors)
-    },
-    durationMillis: Int
-) = composed {
-
-    val infiniteTransition = rememberInfiniteTransition(label = "rotation")
-    val angle by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ), label = "rotation"
-    )
-
-    // Infinite phase animation for PathEffect
-    val phase by infiniteTransition.animateFloat(
-        initialValue = .8f,
-        targetValue = .3f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(
-                durationMillis = 1500,
-                easing = LinearEasing
-            ),
-            repeatMode = RepeatMode.Reverse
-        )
-    )
-
-
-    val paint = remember {
-        Paint().apply {
-            style = PaintingStyle.Fill
-        }
-    }
-
-    val frameworkPaint: NativePaint = remember {
-        paint.asFrameworkPaint()
-    }
-
-    Modifier
-        .drawWithCache {
-
-            val center = size.center
-
-            paint.shader = SweepGradientShader(
-                center = center,
-                colors = colors
-            )
-
-            val strokeWidthPx = strokeWidth.toPx()
-
-            val outline: Outline = shape.createOutline(size, layoutDirection, this)
-
-            onDrawWithContent {
-                // This is actual content of the Composable that this modifier is assigned to
-                drawContent()
-
-                with(drawContext.canvas.nativeCanvas) {
-                    val checkPoint = saveLayer(null, null)
-
-                    frameworkPaint.setMaskFilter(
-                        BlurMaskFilter(
-                            30f * phase,
-                            BlurMaskFilter.Blur.NORMAL
-                        )
-                    )
-
-
-                    // Using a maskPath with op(this, outline.path, PathOperation.Difference)
-                    // And GenericShape can be used as Modifier.border does instead of clip
-                    drawOutline(
-                        outline = outline,
-                        color = Color.Gray,
-                        style = Stroke(strokeWidthPx * 2)
-                    )
-
-                    // Source
-                    paint.alpha = (.1f + phase).coerceIn(0f, 1f)
-
-//                    rotate(angle) {
-//                        this.drawCircle(
-//                            center = center,
-//                            radius = size.width,
-//                            paint = paint
-//                        )
-//                    }
-                    restoreToCount(checkPoint)
-                }
-            }
-        }
 }
