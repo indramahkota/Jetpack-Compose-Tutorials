@@ -23,7 +23,7 @@ fun MessageFeedbackRow(
     message: Message
 ) {
     Row(
-        modifier = modifier.padding(vertical = 16.dp),
+        modifier = modifier.padding(bottom = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         IconButton(

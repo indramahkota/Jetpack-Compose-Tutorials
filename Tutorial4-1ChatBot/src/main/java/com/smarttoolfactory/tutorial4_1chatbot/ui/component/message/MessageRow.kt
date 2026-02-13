@@ -63,7 +63,7 @@ fun MessageRow(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         BasicRichText(
-                            modifier = Modifier,
+                            modifier = Modifier.padding(bottom = 16.dp),
                             style = MarkDownStyle.DefaultTextStyle
                         ) {
                             MarkdownComposer(

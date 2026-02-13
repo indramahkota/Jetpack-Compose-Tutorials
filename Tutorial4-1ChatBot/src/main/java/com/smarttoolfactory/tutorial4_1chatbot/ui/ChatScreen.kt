@@ -5,6 +5,7 @@ package com.smarttoolfactory.tutorial4_1chatbot.ui
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -347,10 +348,13 @@ fun ChatScreenContent(
                                 min = (lastItemHeight - contentPaddingBottom - itemSpacing)
                                     .coerceAtLeast(0.dp)
                             )
+//                                .border(2.dp, Color.Red)
                         } else if (index == 0 && messages.size <= 2) {
                             Modifier.padding(top = initialItemPadding)
+//                                .border(2.dp, Color.Blue)
                         } else {
                             Modifier
+//                                .border(2.dp, Color.Green)
                         }
 
                     MessageRow(

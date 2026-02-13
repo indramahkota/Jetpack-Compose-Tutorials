@@ -30,7 +30,7 @@ class MainActivity : ComponentActivity() {
                 textStyleProvider = {
                     TextStyle.Default.copy(
                         fontSize = 16.sp,
-                        lineHeight = 20.sp
+                        lineHeight = 24.sp
                     )
                 }
             ) {
