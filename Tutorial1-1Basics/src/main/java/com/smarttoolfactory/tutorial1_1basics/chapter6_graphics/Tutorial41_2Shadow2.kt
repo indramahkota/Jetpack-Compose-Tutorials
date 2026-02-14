@@ -36,6 +36,7 @@ import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.dropShadow
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.center
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.NativePaint
@@ -47,6 +48,7 @@ import androidx.compose.ui.graphics.SweepGradientShader
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.shadow.Shadow
@@ -314,14 +316,161 @@ fun Modifier.drawShadow(
     }
 }
 
-// TODO Finish this modifier
+@Preview
+@Composable
+private fun CustomAnimatedShadowSample() {
+    Column(
+        modifier = Modifier.systemBarsPadding().fillMaxSize()
+    ) {
+        var radius by remember {
+            mutableFloatStateOf(5f)
+        }
+
+        var spread by remember {
+            mutableFloatStateOf(5f)
+        }
+
+        var offsetX by remember {
+            mutableFloatStateOf(5f)
+        }
+
+        var offsetY by remember {
+            mutableFloatStateOf(5f)
+        }
+
+        var alpha by remember {
+            mutableFloatStateOf(1f)
+        }
+
+        Text(text = "radius: ${radius.roundToInt()}")
+        Slider(
+            value = radius,
+            onValueChange = { radius = it },
+            valueRange = 0f..30f,
+        )
+
+        Text(text = "spread: ${spread.roundToInt()}")
+        Slider(
+            value = spread,
+            onValueChange = { spread = it },
+            valueRange = 0f..30f,
+        )
+
+        Text(text = "offsetX: ${offsetX.roundToInt()}")
+        Slider(
+            value = offsetX,
+            onValueChange = { offsetX = it },
+            valueRange = -20f..30f,
+        )
+
+        Text(text = "offsetY: ${offsetY.roundToInt()}")
+        Slider(
+            value = offsetY,
+            onValueChange = { offsetY = it },
+            valueRange = -20f..30f,
+        )
+
+        Text(text = "alpha: $alpha")
+        Slider(
+            value = alpha,
+            onValueChange = { alpha = it },
+        )
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        val shape = RoundedCornerShape(16.dp)
+//    val shape = CircleShape
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceAround
+        ) {
+            Box(
+                Modifier
+                    .size(120.dp)
+                    .drawAnimatedShadow(
+                        shape = shape,
+                        Shadow(
+                            brush = Brush.sweepGradient(colors),
+                            alpha = alpha,
+                            radius = radius.dp,
+                            spread = spread.dp,
+                            offset = DpOffset(x = offsetX.dp, offsetY.dp)
+                        )
+                    )
+                    .background(
+                        color = Color.White,
+                        shape = shape
+                    )
+            ) {
+                Text(
+                    "Animated\n Shadow",
+                    modifier = Modifier.align(Alignment.Center),
+                    fontSize = 18.sp
+                )
+            }
+
+            Box(
+                Modifier
+                    .size(120.dp)
+                    .drawAnimatedShadow(
+                        shape = shape,
+                        Shadow(
+                            brush = Brush.sweepGradient(colors),
+                            alpha = alpha,
+                            radius = radius.dp,
+                            spread = spread.dp,
+                            offset = DpOffset(x = offsetX.dp, offsetY.dp)
+                        )
+                    )
+                    .background(
+                        color = Color.White.copy(alpha = .7f),
+                        shape = shape
+                    )
+            ) {
+                Text(
+                    "Animated\n Shadow",
+                    modifier = Modifier.align(Alignment.Center),
+                    fontSize = 18.sp
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(40.dp))
+
+        Box(
+            Modifier
+                .padding(16.dp)
+                .height(56.dp)
+                .fillMaxWidth()
+                .drawAnimatedShadow(
+                    shape = shape,
+                    Shadow(
+                        brush = Brush.sweepGradient(colors),
+                        alpha = alpha,
+                        radius = radius.dp,
+                        spread = spread.dp,
+                        offset = DpOffset(x = offsetX.dp, offsetY.dp)
+                    )
+                )
+                    .background(
+                        color = Color.White,
+                        shape = shape
+                    )
+        ) {
+            Text(
+                "Animated Shadow",
+                modifier = Modifier.align(Alignment.Center),
+                fontSize = 18.sp
+            )
+        }
+    }
+}
+
 fun Modifier.drawAnimatedShadow(
-    strokeWidth: Dp,
     shape: Shape,
-    brush: (Size) -> Brush = {
-        Brush.sweepGradient(gradientColors)
-    },
-    durationMillis: Int
+    shadow: Shadow,
+    durationMillis: Int = 2000
 ) = composed {
 
     val infiniteTransition = rememberInfiniteTransition(label = "rotation")
@@ -329,24 +478,26 @@ fun Modifier.drawAnimatedShadow(
         initialValue = 0f,
         targetValue = 360f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis, easing = LinearEasing),
+            animation = tween(
+                durationMillis,
+                easing = LinearEasing
+            ),
             repeatMode = RepeatMode.Restart
         ), label = "rotation"
     )
 
     // Infinite phase animation for PathEffect
     val phase by infiniteTransition.animateFloat(
-        initialValue = .8f,
-        targetValue = .3f,
+        initialValue = 0f,
+        targetValue = 1f,
         animationSpec = infiniteRepeatable(
             animation = tween(
-                durationMillis = 1500,
+                durationMillis = durationMillis,
                 easing = LinearEasing
             ),
             repeatMode = RepeatMode.Reverse
         )
     )
-
 
     val paint = remember {
         Paint().apply {
@@ -354,62 +505,67 @@ fun Modifier.drawAnimatedShadow(
         }
     }
 
-    val frameworkPaint: NativePaint = remember {
-        paint.asFrameworkPaint()
-    }
+    drawWithCache {
+        val radiusPx = shadow.radius.toPx()
+        val spreadPx = shadow.spread.toPx()
 
-    Modifier
-        .drawWithCache {
+        val outset = spreadPx * 2f
+        val shadowWidth = size.width + outset
+        val shadowHeight = size.height + outset
 
-            val center = size.center
+        val outline = shape.createOutline(
+            size = Size(shadowWidth, shadowHeight),
+            layoutDirection = layoutDirection,
+            density = this
+        )
 
-            paint.shader = SweepGradientShader(
-                center = center,
-                colors = colors
-            )
+        // Update paint fields without LaunchedEffect
+        paint.color = shadow.color
+        paint.alpha = shadow.alpha
 
-            val strokeWidthPx = strokeWidth.toPx()
+        paint.shader = SweepGradientShader(
+            center = size.center,
+            colors = colors
+        )
 
-            val outline: Outline = shape.createOutline(size, layoutDirection, this)
+        val frameworkPaint = paint.asFrameworkPaint()
+        frameworkPaint.maskFilter = if (radiusPx > 0f) {
+            BlurMaskFilter(radiusPx, BlurMaskFilter.Blur.NORMAL)
+        } else {
+            null
+        }
 
-            onDrawWithContent {
-                // This is actual content of the Composable that this modifier is assigned to
-                drawContent()
+        onDrawBehind {
+            val context = this
+            with(drawContext.canvas.nativeCanvas) {
+                val checkPoint = saveLayer(null, null)
 
-                with(drawContext.canvas.nativeCanvas) {
-                    val checkPoint = saveLayer(null, null)
-
-                    frameworkPaint.setMaskFilter(
-                        BlurMaskFilter(
-                            30f * phase,
-                            BlurMaskFilter.Blur.NORMAL
+                drawIntoCanvas { canvas ->
+                    // Destination
+                    translate((size.width - shadowWidth) / 2, (size.height - shadowHeight) / 2) {
+                        canvas.drawOutline(
+                            outline = outline,
+                            paint = paint
                         )
-                    )
-
-
-                    // Using a maskPath with op(this, outline.path, PathOperation.Difference)
-                    // And GenericShape can be used as Modifier.border does instead of clip
-                    drawOutline(
-                        outline = outline,
-                        color = Color.Gray,
-                        style = Stroke(strokeWidthPx * 2)
-                    )
+                    }
 
                     // Source
-                    paint.alpha = (.1f + phase).coerceIn(0f, 1f)
-
-//                    rotate(angle) {
-//                        this.drawCircle(
-//                            center = center,
-//                            radius = size.width,
-//                            paint = paint
-//                        )
-//                    }
-                    restoreToCount(checkPoint)
+                    context.rotate(angle) {
+                        context.drawCircle(
+                            center = center,
+                            radius = size.width,
+                            brush = Brush.sweepGradient(colors),
+                            blendMode = BlendMode.SrcIn
+                        )
+                    }
                 }
+
+                restoreToCount(checkPoint)
             }
         }
+    }
 }
+
 
 private val colors = listOf(
     Color(0xFF4cc9f0),
