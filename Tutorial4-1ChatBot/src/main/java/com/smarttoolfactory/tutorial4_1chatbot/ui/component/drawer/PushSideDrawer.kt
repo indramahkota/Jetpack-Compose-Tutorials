@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -65,21 +67,37 @@ class PushDrawerState internal constructor(
     var currentValue by mutableStateOf(initialValue)
         private set
 
-    // Canonical open width in px (computed as screenWidth - endPadding)
+    // Canonical open width in px (screenWidth - endPadding)
     internal var openWidthPx by mutableFloatStateOf(0f)
 
-    // Screen width in px (used for drag overshoot)
+    // Screen width in px
     internal var screenWidthPx by mutableFloatStateOf(0f)
 
-    // Content translation in px: 0..screenWidthPx during drag, settles to 0 or openWidthPx
+    // Content translation in px: 0..screenWidthPx during drag
     internal val offsetX = Animatable(0f)
+
+    /**
+     * Full-open is explicit-only. Gestures must never settle into full-open.
+     * - openFully() sets this flag
+     * - any gesture snap/settle clears it
+     * - open()/close() also clear it to keep semantics deterministic
+     */
+    internal var fullOpenRequested by mutableStateOf(false)
 
     val isOpen: Boolean get() = currentValue == PushDrawerValue.Open
     val isClosed: Boolean get() = currentValue == PushDrawerValue.Closed
 
     /**
-     * Progress is relative to canonical open width (openWidthPx).
-     * Overshoot still clamps to 1f.
+     * Drawer can be "open" in two widths:
+     * - normal open width = openWidthPx (default)
+     * - full open width   = screenWidthPx (only if openFully() was called and not invalidated)
+     */
+    internal val openTargetPx: Float
+        get() = if (fullOpenRequested) screenWidthPx else openWidthPx
+
+    /**
+     * Progress is always relative to canonical open width (openWidthPx).
+     * Full-open still clamps to 1f.
      */
     val progress: Float
         get() {
@@ -93,35 +111,61 @@ class PushDrawerState internal constructor(
         this.screenWidthPx = screenWidthPx
     }
 
+    private fun springSpec() =
+        spring<Float>(stiffness = Spring.StiffnessMediumLow, dampingRatio = 0.85f)
+
     suspend fun open() {
+        fullOpenRequested = false
         if (!confirmValueChange(PushDrawerValue.Open)) return
         currentValue = PushDrawerValue.Open
         offsetX.animateTo(
             targetValue = openWidthPx,
-            animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = 0.85f)
+            animationSpec = springSpec()
+        )
+    }
+
+    /**
+     * Opens drawer to full screen width (no end padding) ONLY when explicitly called.
+     * Any user drag will invalidate full-open and settle back to normal open width.
+     */
+    suspend fun openFully() {
+        fullOpenRequested = true
+        if (!confirmValueChange(PushDrawerValue.Open)) return
+        currentValue = PushDrawerValue.Open
+        offsetX.animateTo(
+            targetValue = screenWidthPx,
+            animationSpec = springSpec()
         )
     }
 
     suspend fun close() {
+        fullOpenRequested = false
         if (!confirmValueChange(PushDrawerValue.Closed)) return
         currentValue = PushDrawerValue.Closed
         offsetX.animateTo(
             targetValue = 0f,
-            animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = 0.85f)
+            animationSpec = springSpec()
         )
     }
 
     suspend fun toggle() {
+        // toggle is always the canonical behavior (no full-open)
         if (isOpen) close() else open()
     }
 
     internal suspend fun snapTo(valuePx: Float) {
+        // Any gesture interaction invalidates explicit full-open.
+        fullOpenRequested = false
+
         offsetX.snapTo(valuePx.coerceIn(0f, screenWidthPx))
         currentValue =
             if (offsetX.value >= openWidthPx * 0.5f) PushDrawerValue.Open else PushDrawerValue.Closed
     }
 
     internal suspend fun settle(velocityPxPerSec: Float) {
+        // Any gesture interaction invalidates explicit full-open.
+        fullOpenRequested = false
+
         val flingThreshold = 1400f
         val shouldOpen =
             when {
@@ -142,13 +186,14 @@ fun rememberPushDrawerState(
 }
 
 /**
- * PushDrawer behaves like ChatGPT:
  * - drawer width is computed like ModalDrawer: screenWidth - endDrawerPadding (default 56.dp)
  * - content is pushed right
  * - drawer slides in from the left
  * - scrim covers ONLY pushed content region (not drawer)
  * - you can drag anywhere start->end to open; drag can overshoot to full screen width
- * - on release it settles to Closed(0) or Open(openWidthPx)
+ * - on release it settles to Closed(0) or Open(openWidthPx) (never full-open)
+ *
+ * Full-open (screenWidth) exists ONLY via drawerState.openFully()
  */
 @Composable
 fun PushSideDrawer(
@@ -156,7 +201,7 @@ fun PushSideDrawer(
     modifier: Modifier = Modifier,
     drawerState: PushDrawerState = rememberPushDrawerState(PushDrawerValue.Closed),
     gesturesEnabled: Boolean = true,
-    endDrawerPadding: Dp = 56.dp, // ✅ ModalDrawer style
+    endDrawerPadding: Dp = 56.dp,
     drawerShape: RoundedCornerShape = RoundedCornerShape(0.dp),
     drawerBackgroundColor: Color = MaterialTheme.colorScheme.surface,
     drawerContentColor: Color = contentColorFor(drawerBackgroundColor),
@@ -169,8 +214,6 @@ fun PushSideDrawer(
     BoxWithConstraints(modifier.fillMaxSize()) {
         val screenWidthPx = with(density) { maxWidth.toPx() }
         val endPaddingPx = with(density) { endDrawerPadding.toPx() }
-
-        // ModalDrawer width rule: maxWidth - EndDrawerPadding
         val openWidthPx = (screenWidthPx - endPaddingPx).coerceAtLeast(0f)
 
         SideEffect {
@@ -178,82 +221,95 @@ fun PushSideDrawer(
         }
 
         val draggableState = rememberDraggableState { delta ->
-            scope.launch {
-                // allow overshoot to full screen while dragging
-                drawerState.snapTo(drawerState.offsetX.value + delta)
+            if (gesturesEnabled) {
+                scope.launch {
+                    // allow overshoot to full screen while dragging
+                    drawerState.snapTo(drawerState.offsetX.value + delta)
+                }
             }
         }
 
         Box(
-            modifier = Modifier.then(
+            modifier = modifier.then(
                 if (gesturesEnabled) {
                     Modifier.draggable(
                         state = draggableState,
                         orientation = Orientation.Horizontal,
-                        onDragStopped = { v -> scope.launch { drawerState.settle(v) } }
+                        onDragStopped = { v ->
+                            scope.launch { drawerState.settle(v) }
+                        }
                     )
-                } else Modifier
+                } else {
+                    Modifier
+                }
             )
         ) {
+            // CONTENT (pushed)
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer {
                         translationX = drawerState.offsetX.value
 
-                        val progress = drawerState.progress
-                        val scale = 1f - 0.02f * progress
+                        val p = drawerState.progress
+                        val scale = 1f - 0.02f * p
                         scaleX = scale
                         scaleY = scale
-                        shadowElevation = 0f
-                        shape = RoundedCornerShape((16.dp * progress).toPx())
-                        clip = progress > 0f
+                        shape = RoundedCornerShape((16.dp * p).toPx())
+                        clip = p > 0f
                     }
             ) {
-                content({ scope.launch { drawerState.toggle() } })
+                content { scope.launch { drawerState.toggle() } }
             }
 
-            // Starts at x = offsetX and covers to screen end.
+            // SCRIM covers only pushed-content region
             if (drawerState.offsetX.value > 0f) {
                 val scrimStartPx = drawerState.offsetX.value.coerceIn(0f, screenWidthPx)
                 val scrimWidthPx = (screenWidthPx - scrimStartPx).coerceAtLeast(0f)
 
-                Box(
-                    modifier = Modifier
-                        .offset { IntOffset(scrimStartPx.roundToInt(), 0) }
-                        .width(with(density) { scrimWidthPx.toDp() })
-                        .fillMaxHeight()
-                        .background(scrimColor.copy(alpha = scrimColor.alpha * drawerState.progress))
-                        .pointerInput(gesturesEnabled) {
-                            if (!gesturesEnabled) return@pointerInput
-                            awaitPointerEventScope {
-                                while (true) {
-                                    val event = awaitPointerEvent()
-                                    if (event.changes.any { it.pressed }) {
-                                        scope.launch { drawerState.close() }
-                                        event.changes.forEach { it.consume() }
+                // When full-open, scrimWidth becomes 0 -> scrim disappears naturally.
+                if (scrimWidthPx > 0.5f) {
+                    Box(
+                        modifier = Modifier
+                            .offset { IntOffset(scrimStartPx.roundToInt(), 0) }
+                            .width(with(density) { scrimWidthPx.toDp() })
+                            .fillMaxHeight()
+                            .background(scrimColor.copy(alpha = scrimColor.alpha * drawerState.progress))
+                            .pointerInput(gesturesEnabled) {
+                                if (gesturesEnabled) {
+                                    awaitPointerEventScope {
+                                        while (true) {
+                                            val event = awaitPointerEvent()
+                                            if (event.changes.any { it.pressed }) {
+                                                scope.launch { drawerState.close() }
+                                                event.changes.forEach { it.consume() }
+                                            }
+                                        }
                                     }
                                 }
                             }
-                        }
-                        .semantics {
-                            if (drawerState.isOpen) {
-                                dismiss {
-                                    scope.launch { drawerState.close() }
-                                    true
+                            .semantics {
+                                if (drawerState.isOpen) {
+                                    dismiss {
+                                        scope.launch { drawerState.close() }
+                                        true
+                                    }
                                 }
                             }
-                        }
-                )
+                    )
+                }
             }
 
-            // Slide driven by canonical progress (0..1). Overshoot doesn't move it further.
-            val drawerTranslationX = -openWidthPx * (1f - drawerState.progress)
+            // - width uses openTargetPx (openWidthPx normally, screenWidthPx only after openFully())
+            val drawerWidthPx = drawerState.openTargetPx
+
+            // Slide distance uses the actual drawer width so full-open slides correctly.
+            val drawerTranslationX = -drawerWidthPx * (1f - drawerState.progress)
 
             Surface(
                 modifier = Modifier
                     .fillMaxHeight()
-                    .width(with(density) { openWidthPx.toDp() })
+                    .width(with(density) { drawerWidthPx.toDp() })
                     .graphicsLayer { translationX = drawerTranslationX }
                     .semantics { paneTitle = "Navigation drawer" },
                 shape = drawerShape,
@@ -269,9 +325,11 @@ fun PushSideDrawer(
 }
 
 @Composable
-private fun DemoChatScreen(onHamburgerClick: () -> Unit) {
-    Column(Modifier.fillMaxSize()) {
-        // Top bar is part of content; no elevation.
+private fun DemoChatScreen(
+    onHamburgerClick: () -> Unit,
+    onOpenFullyClick: () -> Unit
+) {
+    Column(Modifier.fillMaxSize().systemBarsPadding()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -282,7 +340,25 @@ private fun DemoChatScreen(onHamburgerClick: () -> Unit) {
             IconButton(onClick = onHamburgerClick) {
                 Icon(Icons.Default.Menu, contentDescription = "Menu")
             }
-            Text("Chat", style = MaterialTheme.typography.titleMedium)
+
+            // Demo button to trigger full-open explicitly
+            Text(
+                text = "Search",
+                modifier = Modifier
+                    .padding(start = 16.dp)
+                    .background(Color.Transparent)
+                    .pointerInput(Unit) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                if (event.changes.any { it.pressed }) {
+                                    onOpenFullyClick()
+                                    event.changes.forEach { it.consume() }
+                                }
+                            }
+                        }
+                    }
+            )
         }
 
         Divider()
@@ -296,15 +372,19 @@ private fun DemoChatScreen(onHamburgerClick: () -> Unit) {
 @Composable
 private fun DemoScreen() {
     val drawerState = rememberPushDrawerState(PushDrawerValue.Closed)
+    val scope = rememberCoroutineScope()
 
     PushSideDrawer(
         drawerState = drawerState,
-        endDrawerPadding = 56.dp, // like ModalDrawer
+        endDrawerPadding = 56.dp,
         drawerContent = {
+
             Text(
                 "Chats",
                 style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(16.dp)
+                modifier = Modifier
+                    .statusBarsPadding()
+                    .padding(16.dp)
             )
             Divider(Modifier.padding(horizontal = 16.dp))
             Spacer(Modifier.height(8.dp))
@@ -316,12 +396,17 @@ private fun DemoScreen() {
             }
         }
     ) { onHamburgerClick ->
-        DemoChatScreen(onHamburgerClick)
+        DemoChatScreen(
+            onHamburgerClick = onHamburgerClick,
+            onOpenFullyClick = { scope.launch { drawerState.openFully() } }
+        )
     }
 }
 
 @Preview(showBackground = true, widthDp = 411, heightDp = 891)
 @Composable
 private fun PushDrawerPreview() {
-    MaterialTheme { DemoScreen() }
+    MaterialTheme {
+        DemoScreen()
+    }
 }
