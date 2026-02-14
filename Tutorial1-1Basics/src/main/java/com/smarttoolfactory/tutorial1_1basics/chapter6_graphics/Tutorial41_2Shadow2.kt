@@ -25,6 +25,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Slider
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
@@ -39,17 +40,21 @@ import androidx.compose.ui.geometry.center
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.PaintingStyle
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.SweepGradientShader
 import androidx.compose.ui.graphics.drawOutline
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -449,9 +454,9 @@ fun Modifier.drawShadow(
 fun Modifier.drawAnimatedShadow(
     shape: Shape,
     shadow: Shadow,
-    durationMillis: Int = 1500
+    durationMillis: Int = 2000,
+    border: Border? = Border(width = 2.dp, brush = shadow.brush ?: Brush.sweepGradient(colors))
 ) = composed {
-
     val infiniteTransition = rememberInfiniteTransition(label = "rotation")
     val angle by infiniteTransition.animateFloat(
         initialValue = 0f,
@@ -465,7 +470,6 @@ fun Modifier.drawAnimatedShadow(
         ), label = "rotation"
     )
 
-    // Infinite phase animation for PathEffect
     val phase by infiniteTransition.animateFloat(
         initialValue = .3f,
         targetValue = 1f,
@@ -477,6 +481,30 @@ fun Modifier.drawAnimatedShadow(
             repeatMode = RepeatMode.Reverse
         )
     )
+    val radius = shadow.radius
+    val spread = shadow.spread
+    val brush = shadow.brush ?: SolidColor(shadow.color)
+
+    drawAnimatedShadow(
+        shape = shape,
+        radius = radius * phase,
+        spread = spread,
+        alpha = phase,
+        angle = angle,
+        brush = brush,
+        border = border
+    )
+}
+
+fun Modifier.drawAnimatedShadow(
+    shape: Shape,
+    radius: Dp,
+    spread: Dp,
+    alpha: Float,
+    angle: Float,
+    brush: Brush,
+    border: Border? = null
+) = composed {
 
     val paint = remember {
         Paint().apply {
@@ -485,28 +513,26 @@ fun Modifier.drawAnimatedShadow(
     }
 
     drawWithCache {
-        val radiusPx = shadow.radius.toPx() * phase
-        val spreadPx = shadow.spread.toPx()
+        val radiusPx = radius.toPx()
+        val spreadPx = spread.toPx()
 
         val outset = spreadPx * 2f
         val shadowWidth = size.width + outset
         val shadowHeight = size.height + outset
 
-        val outline = shape.createOutline(
+        val outline: Outline = shape.createOutline(
             size = Size(shadowWidth, shadowHeight),
             layoutDirection = layoutDirection,
             density = this
         )
 
-        // Update paint fields without LaunchedEffect
-        paint.color = shadow.color
-        paint.alpha = phase.coerceIn(.5f, 1f)
-
-        paint.shader = SweepGradientShader(
-            center = size.center,
-            colors = colors
-        )
-
+        val borderOutline: Outline? = border?.let {
+            shape.createOutline(
+                size = Size(size.width, size.height),
+                layoutDirection = layoutDirection,
+                density = this
+            )
+        }
         val frameworkPaint = paint.asFrameworkPaint()
         frameworkPaint.maskFilter = if (radiusPx > 0f) {
             BlurMaskFilter(radiusPx, BlurMaskFilter.Blur.NORMAL)
@@ -514,7 +540,9 @@ fun Modifier.drawAnimatedShadow(
             null
         }
 
-        onDrawBehind {
+        onDrawWithContent {
+            paint.alpha = alpha
+
             val context = this
             with(drawContext.canvas.nativeCanvas) {
                 val checkPoint = saveLayer(null, null)
@@ -533,7 +561,7 @@ fun Modifier.drawAnimatedShadow(
                         context.drawCircle(
                             center = center,
                             radius = size.width,
-                            brush = Brush.sweepGradient(colors),
+                            brush = brush,
                             blendMode = BlendMode.SrcIn
                         )
                     }
@@ -541,10 +569,40 @@ fun Modifier.drawAnimatedShadow(
 
                 restoreToCount(checkPoint)
             }
+
+            drawContent()
+
+            if (border != null && borderOutline != null) {
+                with(drawContext.canvas.nativeCanvas) {
+                    val checkPoint = saveLayer(null, null)
+
+                    // Destination
+                    val strokeWidthPx = border.width.toPx()
+                    drawOutline(
+                        outline = borderOutline,
+                        color = Color.White,
+                        style = Stroke(strokeWidthPx)
+                    )
+
+                    // Source
+                    rotate(angle) {
+                        drawCircle(
+                            brush = border.brush,
+                            radius = size.width,
+                            blendMode = BlendMode.SrcIn,
+                            alpha = alpha
+                        )
+                    }
+                    restoreToCount(checkPoint)
+                }
+            }
         }
     }
 }
 
+@Stable
+fun Border(width: Dp, color: Color) = Border(width, SolidColor(color))
+data class Border(val width: Dp, val brush: Brush)
 
 private val colors = listOf(
     Color(0xFF4cc9f0),
