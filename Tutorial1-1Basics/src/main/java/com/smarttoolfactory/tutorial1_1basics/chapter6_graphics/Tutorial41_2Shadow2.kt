@@ -25,7 +25,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Slider
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
@@ -35,7 +34,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.dropShadow
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.center
 import androidx.compose.ui.graphics.Brush
@@ -52,7 +50,6 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.shadow.Shadow
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
@@ -89,253 +86,232 @@ private fun TutorialContent() {
 @Preview
 @Composable
 private fun CustomDropShadowSample() {
- Column(
-     modifier = Modifier.systemBarsPadding()
- ) {
-     var radius by remember {
-         mutableFloatStateOf(5f)
-     }
+    Column(
+        modifier = Modifier.systemBarsPadding()
+    ) {
+        var radius by remember {
+            mutableFloatStateOf(5f)
+        }
 
-     var spread by remember {
-         mutableFloatStateOf(5f)
-     }
+        var spread by remember {
+            mutableFloatStateOf(5f)
+        }
 
-     var offsetX by remember {
-         mutableFloatStateOf(5f)
-     }
+        var offsetX by remember {
+            mutableFloatStateOf(5f)
+        }
 
-     var offsetY by remember {
-         mutableFloatStateOf(5f)
-     }
+        var offsetY by remember {
+            mutableFloatStateOf(5f)
+        }
 
-     var alpha by remember {
-         mutableFloatStateOf(1f)
-     }
+        var alpha by remember {
+            mutableFloatStateOf(1f)
+        }
 
-     Text(text = "radius: ${radius.roundToInt()}")
-     Slider(
-         value = radius,
-         onValueChange = { radius = it },
-         valueRange = 0f..30f,
-     )
+        Text(text = "radius: ${radius.roundToInt()}")
+        Slider(
+            value = radius,
+            onValueChange = { radius = it },
+            valueRange = 0f..30f,
+        )
 
-     Text(text = "spread: ${spread.roundToInt()}")
-     Slider(
-         value = spread,
-         onValueChange = { spread = it },
-         valueRange = 0f..30f,
-     )
+        Text(text = "spread: ${spread.roundToInt()}")
+        Slider(
+            value = spread,
+            onValueChange = { spread = it },
+            valueRange = 0f..30f,
+        )
 
-     Text(text = "offsetX: ${offsetX.roundToInt()}")
-     Slider(
-         value = offsetX,
-         onValueChange = { offsetX = it },
-         valueRange = -20f..30f,
-     )
+        Text(text = "offsetX: ${offsetX.roundToInt()}")
+        Slider(
+            value = offsetX,
+            onValueChange = { offsetX = it },
+            valueRange = -20f..30f,
+        )
 
-     Text(text = "offsetY: ${offsetY.roundToInt()}")
-     Slider(
-         value = offsetY,
-         onValueChange = { offsetY = it },
-         valueRange = -20f..30f,
-     )
+        Text(text = "offsetY: ${offsetY.roundToInt()}")
+        Slider(
+            value = offsetY,
+            onValueChange = { offsetY = it },
+            valueRange = -20f..30f,
+        )
 
-     Text(text = "alpha: $alpha")
-     Slider(
-         value = alpha,
-         onValueChange = { alpha = it },
-     )
+        Text(text = "alpha: $alpha")
+        Slider(
+            value = alpha,
+            onValueChange = { alpha = it },
+        )
 
-     Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(32.dp))
 
-     val shape =RoundedCornerShape(16.dp)
+        val shape = RoundedCornerShape(16.dp)
 //    val shape = CircleShape
 
-     Row(
-         modifier = Modifier.fillMaxWidth(),
-         horizontalArrangement = Arrangement.SpaceAround
-     ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceAround
+        ) {
+            Box(
+                Modifier
+                    .size(120.dp)
+                    .dropShadow(
+                        shape = shape,
+                        shadow = Shadow(
+                            brush = Brush.sweepGradient(colors),
+                            radius = radius.dp,
+                            spread = spread.dp,
+                            alpha = alpha,
+                            offset = DpOffset(x = offsetX.dp, offsetY.dp)
+                        )
+                    )
+                    .background(
+                        color = Color.White,
+                        shape = shape
+                    )
+            ) {
+                Text(
+                    "Drop Shadow",
+                    modifier = Modifier.align(Alignment.Center),
+                    fontSize = 18.sp
+                )
+            }
 
+            Box(
+                Modifier
+                    .size(120.dp)
+                    .dropShadow(
+                        shape = shape,
+                        shadow = Shadow(
+                            brush = Brush.sweepGradient(colors),
+                            radius = radius.dp,
+                            spread = spread.dp,
+                            alpha = alpha,
+                            offset = DpOffset(x = offsetX.dp, offsetY.dp)
+                        )
+                    )
+                    .background(
+                        color = Color.White.copy(alpha = .7f),
+                        shape = shape
+                    )
+            ) {
+                Text(
+                    "Drop Shadow",
+                    modifier = Modifier.align(Alignment.Center),
+                    fontSize = 18.sp
+                )
+            }
+        }
 
-         Box(
-             Modifier
-                 .size(120.dp)
-                 .dropShadow(
-                     shape = shape,
-                     shadow = Shadow(
-                         brush = Brush.sweepGradient(colors),
-                         radius = radius.dp,
-                         spread = spread.dp,
-                         alpha = alpha,
-                         offset = DpOffset(x = offsetX.dp, offsetY.dp)
-                     )
-                 )
-                 .background(
-                     color = Color.White,
-                     shape = shape
-                 )
-         ) {
-             Text(
-                 "Drop Shadow",
-                 modifier = Modifier.align(Alignment.Center),
-                 fontSize = 18.sp
-             )
-         }
+        Spacer(modifier = Modifier.height(36.dp))
 
-         Box(
-             Modifier
-                 .size(120.dp)
-                 .dropShadow(
-                     shape = shape,
-                     shadow = Shadow(
-                         brush = Brush.sweepGradient(colors),
-                         radius = radius.dp,
-                         spread = spread.dp,
-                         alpha = alpha,
-                         offset = DpOffset(x = offsetX.dp, offsetY.dp)
-                     )
-                 )
-                 .background(
-                     color = Color.White.copy(alpha = .7f),
-                     shape = shape
-                 )
-         ) {
-             Text(
-                 "Drop Shadow",
-                 modifier = Modifier.align(Alignment.Center),
-                 fontSize = 18.sp
-             )
-         }
-     }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceAround
+        ) {
+            Box(
+                Modifier
+                    .size(120.dp)
+                    .drawShadow(
+                        shape = shape,
+                        Shadow(
+                            brush = Brush.sweepGradient(colors),
+                            alpha = alpha,
+                            radius = radius.dp,
+                            spread = spread.dp,
+                            offset = DpOffset(x = offsetX.dp, offsetY.dp)
+                        )
+                    )
+                    .background(
+                        color = Color.White,
+                        shape = shape
+                    )
+            ) {
+                Text(
+                    "Custom\nDrop Shadow",
+                    modifier = Modifier.align(Alignment.Center),
+                    fontSize = 18.sp
+                )
+            }
 
-     Spacer(modifier = Modifier.height(36.dp))
-
-     Row(
-         modifier = Modifier.fillMaxWidth(),
-         horizontalArrangement = Arrangement.SpaceAround
-     ) {
-         Box(
-             Modifier
-                 .size(120.dp)
-                 .drawShadow(
-                     shape = shape,
-                     Shadow(
-                         brush = Brush.sweepGradient(colors),
-                         alpha = alpha,
-                         radius = radius.dp,
-                         spread = spread.dp,
-                         offset = DpOffset(x = offsetX.dp, offsetY.dp)
-                     )
-                 )
-                 .background(
-                     color = Color.White,
-                     shape = shape
-                 )
-         ) {
-             Text(
-                 "Custom\nDrop Shadow",
-                 modifier = Modifier.align(Alignment.Center),
-                 fontSize = 18.sp
-             )
-         }
-
-         Box(
-             Modifier
-                 .size(120.dp)
-                 .drawShadow(
-                     shape = shape,
-                     Shadow(
-                         brush = Brush.sweepGradient(colors),
-                         alpha = alpha,
-                         radius = radius.dp,
-                         spread = spread.dp,
-                         offset = DpOffset(x = offsetX.dp, offsetY.dp)
-                     )
-                 )
-                 .background(
-                     color = Color.White.copy(alpha = .7f),
-                     shape = shape
-                 )
-         ) {
-             Text(
-                 "Custom\nDrop Shadow",
-                 modifier = Modifier.align(Alignment.Center),
-                 fontSize = 18.sp
-             )
-         }
-     }
- }
+            Box(
+                Modifier
+                    .size(120.dp)
+                    .drawShadow(
+                        shape = shape,
+                        Shadow(
+                            brush = Brush.sweepGradient(colors),
+                            alpha = alpha,
+                            radius = radius.dp,
+                            spread = spread.dp,
+                            offset = DpOffset(x = offsetX.dp, offsetY.dp)
+                        )
+                    )
+                    .background(
+                        color = Color.White.copy(alpha = .7f),
+                        shape = shape
+                    )
+            ) {
+                Text(
+                    "Custom\nDrop Shadow",
+                    modifier = Modifier.align(Alignment.Center),
+                    fontSize = 18.sp
+                )
+            }
+        }
+    }
 }
 
 fun Modifier.drawShadow(
     shape: Shape,
     shadow: Shadow
 ) = composed {
-    val paint = remember {
-        Paint().apply {
-            this.style = PaintingStyle.Fill
-            this.color = color
-        }
-    }
 
-    val color = shadow.color
-    val radius = shadow.radius
-    val spread = shadow.spread
-    val offset = shadow.offset
-    val alpha = shadow.alpha
+    val paint = remember { Paint().apply { style = PaintingStyle.Fill } }
 
-    LaunchedEffect(alpha, color) {
-        paint.alpha = alpha
-        paint.color = color
-    }
+    drawWithCache {
+        val radiusPx = shadow.radius.toPx()
+        val spreadPx = shadow.spread.toPx()
+        val offsetXPx = shadow.offset.x.toPx()
+        val offsetYPx = shadow.offset.y.toPx()
 
-    val density = LocalDensity.current
-    val radiusPx: Float
-    val spreadPx: Float
-    val offsetPx: Offset
+        val outset = spreadPx * 2f
+        val shadowWidth = size.width + outset
+        val shadowHeight = size.height + outset
 
-    with(density) {
-        radiusPx = radius.toPx()
-        spreadPx = spread.toPx()
-        offsetPx = Offset(
-            x = offset.x.toPx(),
-            y = offset.y.toPx()
+        val outline = shape.createOutline(
+            size = Size(shadowWidth, shadowHeight),
+            layoutDirection = layoutDirection,
+            density = this
         )
-    }
 
-    Modifier
-        .drawWithCache {
-            paint.shader = SweepGradientShader(
-                center = size.center,
-                colors = colors
-            )
+        // Update paint fields without LaunchedEffect
+        paint.color = shadow.color
+        paint.alpha = shadow.alpha
 
-            val outset = spreadPx * 2
-            val shadowWidth = size.width + outset
-            val shadowHeight = size.height + outset
+        paint.shader = SweepGradientShader(
+            center = size.center,
+            colors = colors
+        )
 
-            val outline: Outline =
-                shape.createOutline(Size(shadowWidth, shadowHeight), layoutDirection, this)
+        val frameworkPaint = paint.asFrameworkPaint()
+        frameworkPaint.maskFilter = if (radiusPx > 0f) {
+            BlurMaskFilter(radiusPx, BlurMaskFilter.Blur.NORMAL)
+        } else {
+            null
+        }
 
-            paint.asFrameworkPaint().setMaskFilter(
-                if (radiusPx > 0) {
-                    BlurMaskFilter(
-                        radiusPx,
-                        BlurMaskFilter.Blur.NORMAL
-                    )
-                } else {
-                    null
-                }
-            )
+        val translateX = offsetXPx - spreadPx
+        val translateY = offsetYPx - spreadPx
 
-            onDrawBehind {
-                translate(left = offsetPx.x - spreadPx, top = offsetPx.y - spreadPx) {
-                    drawIntoCanvas { canvas ->
-                        canvas.drawOutline(outline, paint)
-                    }
+        onDrawBehind {
+            translate(left = translateX, top = translateY) {
+                drawIntoCanvas { canvas ->
+                    canvas.drawOutline(outline, paint)
                 }
             }
         }
+    }
 }
 
 // TODO Finish this modifier
