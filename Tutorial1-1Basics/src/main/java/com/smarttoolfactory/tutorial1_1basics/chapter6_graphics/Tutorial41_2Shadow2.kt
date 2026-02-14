@@ -39,26 +39,22 @@ import androidx.compose.ui.geometry.center
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.NativePaint
-import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.PaintingStyle
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.SweepGradientShader
 import androidx.compose.ui.graphics.drawOutline
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.smarttoolfactory.tutorial1_1basics.ui.components.StyleableTutorialText
-import com.smarttoolfactory.tutorial1_1basics.ui.gradientColors
+import com.smarttoolfactory.tutorial1_1basics.ui.components.TutorialHeader
 import kotlin.math.roundToInt
 
 @Preview
@@ -77,11 +73,18 @@ private fun TutorialContent() {
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        TutorialHeader("Custom DropShadow\nCustom Animated Shadows")
         StyleableTutorialText(
-            text = "Use custom shadow modifier to draw drop shadow and animated shadows.",
+            text = "Use custom shadow modifier to draw drop shadows.",
             bullets = false
         )
         CustomDropShadowSample()
+        Spacer(modifier = Modifier.height(32.dp))
+        StyleableTutorialText(
+            text = "Use custom shadow modifier to draw animated shadows.",
+            bullets = false
+        )
+        CustomAnimatedShadowSample()
     }
 }
 
@@ -148,7 +151,6 @@ private fun CustomDropShadowSample() {
         Spacer(modifier = Modifier.height(32.dp))
 
         val shape = RoundedCornerShape(16.dp)
-//    val shape = CircleShape
 
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -264,6 +266,134 @@ private fun CustomDropShadowSample() {
     }
 }
 
+@Preview
+@Composable
+private fun CustomAnimatedShadowSample() {
+    Column(
+        modifier = Modifier
+            .systemBarsPadding()
+            .fillMaxSize()
+            .padding(16.dp)
+    ) {
+        var radius by remember {
+            mutableFloatStateOf(25f)
+        }
+
+        var spread by remember {
+            mutableFloatStateOf(0f)
+        }
+
+        var alpha by remember {
+            mutableFloatStateOf(1f)
+        }
+
+        Text(text = "radius: ${radius.roundToInt()}")
+        Slider(
+            value = radius,
+            onValueChange = { radius = it },
+            valueRange = 0f..30f,
+        )
+
+        Text(text = "spread: ${spread.roundToInt()}")
+        Slider(
+            value = spread,
+            onValueChange = { spread = it },
+            valueRange = 0f..30f,
+        )
+
+        Text(text = "alpha: $alpha")
+        Slider(
+            value = alpha,
+            onValueChange = { alpha = it },
+        )
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        val shape = RoundedCornerShape(24.dp)
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceAround
+        ) {
+            Box(
+                Modifier
+                    .size(120.dp)
+                    .drawAnimatedShadow(
+                        shape = shape,
+                        Shadow(
+                            brush = Brush.sweepGradient(colors),
+                            alpha = alpha,
+                            radius = radius.dp,
+                            spread = spread.dp
+                        )
+                    )
+                    .background(
+                        color = Color.White,
+                        shape = shape
+                    )
+            ) {
+                Text(
+                    "Animated\n Shadow",
+                    modifier = Modifier.align(Alignment.Center),
+                    fontSize = 18.sp
+                )
+            }
+
+            Box(
+                Modifier
+                    .size(120.dp)
+                    .drawAnimatedShadow(
+                        shape = shape,
+                        Shadow(
+                            brush = Brush.sweepGradient(colors),
+                            alpha = alpha,
+                            radius = radius.dp,
+                            spread = spread.dp
+                        )
+                    )
+                    .background(
+                        color = Color.White.copy(alpha = .7f),
+                        shape = shape
+                    )
+            ) {
+                Text(
+                    "Animated\n Shadow",
+                    modifier = Modifier.align(Alignment.Center),
+                    fontSize = 18.sp
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(40.dp))
+
+        Box(
+            Modifier
+                .padding(16.dp)
+                .height(56.dp)
+                .fillMaxWidth()
+                .drawAnimatedShadow(
+                    shape = shape,
+                    Shadow(
+                        brush = Brush.sweepGradient(colors),
+                        alpha = alpha,
+                        radius = radius.dp,
+                        spread = spread.dp
+                    )
+                )
+                .background(
+                    color = Color.White,
+                    shape = shape
+                )
+        ) {
+            Text(
+                "Animated Shadow",
+                modifier = Modifier.align(Alignment.Center),
+                fontSize = 18.sp
+            )
+        }
+    }
+}
+
 fun Modifier.drawShadow(
     shape: Shape,
     shadow: Shadow
@@ -316,161 +446,10 @@ fun Modifier.drawShadow(
     }
 }
 
-@Preview
-@Composable
-private fun CustomAnimatedShadowSample() {
-    Column(
-        modifier = Modifier.systemBarsPadding().fillMaxSize()
-    ) {
-        var radius by remember {
-            mutableFloatStateOf(5f)
-        }
-
-        var spread by remember {
-            mutableFloatStateOf(5f)
-        }
-
-        var offsetX by remember {
-            mutableFloatStateOf(5f)
-        }
-
-        var offsetY by remember {
-            mutableFloatStateOf(5f)
-        }
-
-        var alpha by remember {
-            mutableFloatStateOf(1f)
-        }
-
-        Text(text = "radius: ${radius.roundToInt()}")
-        Slider(
-            value = radius,
-            onValueChange = { radius = it },
-            valueRange = 0f..30f,
-        )
-
-        Text(text = "spread: ${spread.roundToInt()}")
-        Slider(
-            value = spread,
-            onValueChange = { spread = it },
-            valueRange = 0f..30f,
-        )
-
-        Text(text = "offsetX: ${offsetX.roundToInt()}")
-        Slider(
-            value = offsetX,
-            onValueChange = { offsetX = it },
-            valueRange = -20f..30f,
-        )
-
-        Text(text = "offsetY: ${offsetY.roundToInt()}")
-        Slider(
-            value = offsetY,
-            onValueChange = { offsetY = it },
-            valueRange = -20f..30f,
-        )
-
-        Text(text = "alpha: $alpha")
-        Slider(
-            value = alpha,
-            onValueChange = { alpha = it },
-        )
-
-        Spacer(modifier = Modifier.height(32.dp))
-
-        val shape = RoundedCornerShape(16.dp)
-//    val shape = CircleShape
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceAround
-        ) {
-            Box(
-                Modifier
-                    .size(120.dp)
-                    .drawAnimatedShadow(
-                        shape = shape,
-                        Shadow(
-                            brush = Brush.sweepGradient(colors),
-                            alpha = alpha,
-                            radius = radius.dp,
-                            spread = spread.dp,
-                            offset = DpOffset(x = offsetX.dp, offsetY.dp)
-                        )
-                    )
-                    .background(
-                        color = Color.White,
-                        shape = shape
-                    )
-            ) {
-                Text(
-                    "Animated\n Shadow",
-                    modifier = Modifier.align(Alignment.Center),
-                    fontSize = 18.sp
-                )
-            }
-
-            Box(
-                Modifier
-                    .size(120.dp)
-                    .drawAnimatedShadow(
-                        shape = shape,
-                        Shadow(
-                            brush = Brush.sweepGradient(colors),
-                            alpha = alpha,
-                            radius = radius.dp,
-                            spread = spread.dp,
-                            offset = DpOffset(x = offsetX.dp, offsetY.dp)
-                        )
-                    )
-                    .background(
-                        color = Color.White.copy(alpha = .7f),
-                        shape = shape
-                    )
-            ) {
-                Text(
-                    "Animated\n Shadow",
-                    modifier = Modifier.align(Alignment.Center),
-                    fontSize = 18.sp
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(40.dp))
-
-        Box(
-            Modifier
-                .padding(16.dp)
-                .height(56.dp)
-                .fillMaxWidth()
-                .drawAnimatedShadow(
-                    shape = shape,
-                    Shadow(
-                        brush = Brush.sweepGradient(colors),
-                        alpha = alpha,
-                        radius = radius.dp,
-                        spread = spread.dp,
-                        offset = DpOffset(x = offsetX.dp, offsetY.dp)
-                    )
-                )
-                    .background(
-                        color = Color.White,
-                        shape = shape
-                    )
-        ) {
-            Text(
-                "Animated Shadow",
-                modifier = Modifier.align(Alignment.Center),
-                fontSize = 18.sp
-            )
-        }
-    }
-}
-
 fun Modifier.drawAnimatedShadow(
     shape: Shape,
     shadow: Shadow,
-    durationMillis: Int = 2000
+    durationMillis: Int = 1500
 ) = composed {
 
     val infiniteTransition = rememberInfiniteTransition(label = "rotation")
@@ -488,7 +467,7 @@ fun Modifier.drawAnimatedShadow(
 
     // Infinite phase animation for PathEffect
     val phase by infiniteTransition.animateFloat(
-        initialValue = 0f,
+        initialValue = .3f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
             animation = tween(
@@ -506,7 +485,7 @@ fun Modifier.drawAnimatedShadow(
     }
 
     drawWithCache {
-        val radiusPx = shadow.radius.toPx()
+        val radiusPx = shadow.radius.toPx() * phase
         val spreadPx = shadow.spread.toPx()
 
         val outset = spreadPx * 2f
@@ -521,7 +500,7 @@ fun Modifier.drawAnimatedShadow(
 
         // Update paint fields without LaunchedEffect
         paint.color = shadow.color
-        paint.alpha = shadow.alpha
+        paint.alpha = phase.coerceIn(.5f, 1f)
 
         paint.shader = SweepGradientShader(
             center = size.center,
