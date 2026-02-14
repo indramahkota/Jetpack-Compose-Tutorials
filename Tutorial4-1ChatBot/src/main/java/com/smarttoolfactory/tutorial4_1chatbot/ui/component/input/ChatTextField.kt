@@ -34,6 +34,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -91,6 +92,7 @@ internal fun ChatTextField(
     focusRequester: FocusRequester = remember {
         FocusRequester()
     },
+    onTextLayoutResult: (TextLayoutResult) -> Unit = { },
     onClick: () -> Unit,
     button: @Composable () -> Unit = {
         IconButton(
@@ -140,11 +142,16 @@ internal fun ChatTextField(
                     enabled = enabled,
                     value = value,
                     onValueChange = onValueChange,
+                    onTextLayout = onTextLayoutResult,
                     maxLines = 6,
                     cursorBrush = SolidColor(Color(0xff00897B)),
                     decorationBox = { innerTextField ->
                         if (value.isEmpty()) {
-                            Text("Message", fontSize = 18.sp)
+                            Text(
+                                color = Color.LightGray,
+                                text = "Ask anything...",
+                                fontSize = 18.sp
+                            )
                         }
                         innerTextField()
                     }

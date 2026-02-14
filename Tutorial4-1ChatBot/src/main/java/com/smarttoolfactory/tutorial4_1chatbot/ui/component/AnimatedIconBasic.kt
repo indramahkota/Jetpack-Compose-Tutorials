@@ -346,5 +346,9 @@ private fun rememberSvgPath(pathData: String): Path = remember(pathData) {
 @Preview(showBackground = true, widthDp = 900, heightDp = 720)
 @Composable
 fun FoxTopTextFieldBottomPreview() {
-    FoxTopTextFieldBottomScreen()
+   Column(
+       modifier = Modifier.systemBarsPadding()
+   ) {
+       FoxTopTextFieldBottomScreen()
+   }
 }
