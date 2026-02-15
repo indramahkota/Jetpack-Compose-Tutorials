@@ -24,26 +24,26 @@ fun MessageFeedbackRow(
         horizontalArrangement = Arrangement.spacedBy(0.dp)
     ) {
         IconButton(
-            modifier = Modifier.size(32.dp),
+            modifier = Modifier.size(28.dp),
             onClick = {
 
             }
         ) {
             Icon(
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.size(16.dp),
                 tint = Color.Gray,
                 painter = painterResource(R.drawable.ic_copy),
                 contentDescription = null
             )
         }
         IconButton(
-            modifier = Modifier.size(32.dp),
+            modifier = Modifier.size(28.dp),
             onClick = {
 
             }
         ) {
             Icon(
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.size(16.dp),
                 tint = Color.Gray,
                 painter = painterResource(R.drawable.ic_thumbs_up),
                 contentDescription = null
@@ -51,15 +51,29 @@ fun MessageFeedbackRow(
         }
 
         IconButton(
-            modifier = Modifier.size(32.dp),
+            modifier = Modifier.size(28.dp),
             onClick = {
 
             }
         ) {
             Icon(
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.size(16.dp),
                 tint = Color.Gray,
                 painter = painterResource(R.drawable.ic_thumbs_down),
+                contentDescription = null
+            )
+        }
+
+        IconButton(
+            modifier = Modifier.size(28.dp),
+            onClick = {
+
+            }
+        ) {
+            Icon(
+                modifier = Modifier.size(16.dp),
+                tint = Color.Gray,
+                painter = painterResource(R.drawable.ic_ellipsis_vertical),
                 contentDescription = null
             )
         }
