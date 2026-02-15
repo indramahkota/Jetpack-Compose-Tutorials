@@ -9,13 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -26,13 +20,11 @@ import androidx.compose.ui.graphics.PaintingStyle
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.TileMode
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.unit.dp
 import kotlin.math.asin
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -45,134 +37,151 @@ import kotlin.math.sin
 fun GooeyStretchAndSnapSample(
     modifier: Modifier = Modifier
 ) {
-    val pathDynamic = remember { Path() }
-    val pathStatic = remember { Path() }
-    val bridgePath = remember { Path() }
+    // Dynamic (dragged) blob, static (center) blob, bridge ligament, and union result
+    val dynamicBlobPath = remember { Path() }
+    val staticBlobPath = remember { Path() }
+    val bridgeLigamentPath = remember { Path() }
     val unionPath = remember { Path() }
-    val tmpUnion = remember { Path() }
+    val tmpUnionPath = remember { Path() }
 
-    var currentPosition by remember { mutableStateOf(Offset.Unspecified) }
+    // Pointer position (dynamic center) and canvas size (static center is canvas center)
+    var pointerPosition by remember { mutableStateOf(Offset.Unspecified) }
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
 
-    val paint = remember {
+    // Stroke paint + gradient shader setup
+    val strokePaint = remember {
         Paint().apply {
             style = PaintingStyle.Stroke
             strokeWidth = 4f
         }
     }
-    var isPaintSetUp by remember { mutableStateOf(false) }
-
-    // Event-driven stretch that springs back after detach
-    val stretchAnim = remember { Animatable(0f) }
-
-    // --- Attachment hysteresis ---
-    var attached by remember { mutableStateOf(true) }
-    val detachThreshold = 2f   // px
-    val attachThreshold = -2f  // px
-
-    // --- Stable "pulling apart" detection (EMA + hysteresis) ---
-    var prevGap by remember { mutableFloatStateOf(Float.NaN) }
-    var gapVelEma by remember { mutableFloatStateOf(0f) }
-    var pullingApart by remember { mutableStateOf(false) }
-
-    // --- Stable angles (avoid atan2 noise when centers almost coincide) ---
-    var lastAngleDyn by remember { mutableFloatStateOf(0f) }
-    var lastAngleSta by remember { mutableFloatStateOf(Math.PI.toFloat()) }
-
-    // --- Geometry in composition ---
-    val center = remember(canvasSize) { Offset(canvasSize.width / 2f, canvasSize.height / 2f) }
-    val dynamicCenter = if (currentPosition == Offset.Unspecified) center else currentPosition
-    val staticCenter = center
-
-    val rDynamic = 150f
-    val rStatic = 150f
-    val rSum = rDynamic + rStatic
-
-    val delta = dynamicCenter - staticCenter
-    val d = delta.getDistance()
-    val gap = d - rSum // <=0 attached/touching, >0 detached
-
-    // Update attached state with hysteresis
-    LaunchedEffect(gap) {
-        attached = when {
-            attached && gap > detachThreshold -> false
-            !attached && gap < attachThreshold -> true
-            else -> attached
-        }
-    }
-
-    // Update pullingApart with EMA velocity + hysteresis
-    LaunchedEffect(gap) {
-        val pg = prevGap
-        if (!pg.isNaN()) {
-            val gapDelta = gap - pg // positive => moving apart (toward detachment)
-            // EMA to remove slow jitter/flicker
-            val alpha = 0.25f
-            gapVelEma = gapVelEma + (gapDelta - gapVelEma) * alpha
-        }
-        prevGap = gap
-
-        // Hysteresis thresholds (px/frame-ish)
-        val on = 0.20f
-        val off = -0.20f
-
-        pullingApart = when {
-            pullingApart && gapVelEma < off -> false
-            !pullingApart && gapVelEma > on -> true
-            else -> pullingApart
-        }
-    }
-
-    // Stable angles: only update when distance is meaningful
-    val angleDyn: Float
-    val angleSta: Float
-    if (d > 6f) {
-        // dynamic -> static
-        val vDynToSta = staticCenter - dynamicCenter
-        val vStaToDyn = dynamicCenter - staticCenter
-        lastAngleDyn = atan2(vDynToSta.y, vDynToSta.x)
-        lastAngleSta = atan2(vStaToDyn.y, vStaToDyn.x)
-        angleDyn = lastAngleDyn
-        angleSta = lastAngleSta
-    } else {
-        angleDyn = lastAngleDyn
-        angleSta = lastAngleSta
-    }
-
-    fun smoothstep(x: Float) = x * x * (3f - 2f * x)
+    var isShaderInitialized by remember { mutableStateOf(false) }
 
     /**
-     * Stretch/bridge should only exist while ATTACHED, only when PULLING APART,
-     * and only when gap is close to 0 but still negative.
+     * Stretch amount in [0..1] is driven by "near detach while pulling apart".
+     * When detached, it springs back to 0 (no stretch).
      */
-    val stretchBandPx = 90f
-    val bridgeBandPx = 28f
+    val stretchAmountAnim = remember { Animatable(0f) }
 
-    val targetStretch =
-        if (attached && pullingApart) {
-            // gap: [-stretchBand..0] -> [0..1]
-            val t = ((gap + stretchBandPx) / stretchBandPx).coerceIn(0f, 1f)
-            smoothstep(t)
+    // --- Attachment hysteresis (prevents flicker at the contact boundary) ---
+    var isAttached by remember { mutableStateOf(true) }
+    val detachGapThresholdPx = 2f   // gap > this => detached
+    val attachGapThresholdPx = -2f  // gap < this => attached again
+
+    // --- Pulling-apart detection (EMA + hysteresis on gap velocity) ---
+    var previousGapPx by remember { mutableFloatStateOf(Float.NaN) }
+    var gapVelocityEma by remember { mutableFloatStateOf(0f) }
+    var isPullingApart by remember { mutableStateOf(false) }
+
+    // --- Stable angles (avoid atan2 noise when centers almost coincide) ---
+    var lastDynamicFacingAngleRad by remember { mutableFloatStateOf(0f) }
+    var lastStaticFacingAngleRad by remember { mutableFloatStateOf(Math.PI.toFloat()) }
+
+    // --- Geometry ---
+    val staticCenter = remember(canvasSize) { Offset(canvasSize.width / 2f, canvasSize.height / 2f) }
+    val dynamicCenter = if (pointerPosition == Offset.Unspecified) staticCenter else pointerPosition
+
+    val dynamicRadiusPx = 150f
+    val staticRadiusPx = 150f
+    val sumRadiiPx = dynamicRadiusPx + staticRadiusPx
+
+    val centerDelta = dynamicCenter - staticCenter
+    val centersDistancePx = centerDelta.getDistance()
+
+    /**
+     * gapPx:
+     *  <= 0  -> circles overlap / attached
+     *  >  0  -> separated / detached
+     */
+    val gapPx = centersDistancePx - sumRadiiPx
+
+    // Update attached state with hysteresis
+    LaunchedEffect(gapPx) {
+        isAttached = when {
+            isAttached && gapPx > detachGapThresholdPx -> false
+            !isAttached && gapPx < attachGapThresholdPx -> true
+            else -> isAttached
+        }
+    }
+
+    // Update pulling-apart with EMA velocity + hysteresis
+    LaunchedEffect(gapPx) {
+        val oldGapPx = previousGapPx
+        if (!oldGapPx.isNaN()) {
+            // Positive => moving apart (toward detach)
+            val gapDeltaPx = gapPx - oldGapPx
+
+            // EMA smoothing to avoid jitter
+            val emaAlpha = 0.25f
+            gapVelocityEma = gapVelocityEma + (gapDeltaPx - gapVelocityEma) * emaAlpha
+        }
+        previousGapPx = gapPx
+
+        // Hysteresis thresholds for "pulling apart" state
+        val pullingOnThreshold = 0.20f
+        val pullingOffThreshold = -0.20f
+
+        isPullingApart = when {
+            isPullingApart && gapVelocityEma < pullingOffThreshold -> false
+            !isPullingApart && gapVelocityEma > pullingOnThreshold -> true
+            else -> isPullingApart
+        }
+    }
+
+    // Facing angles: only update when distance is meaningful
+    val dynamicFacingAngleRad: Float
+    val staticFacingAngleRad: Float
+    if (centersDistancePx > 6f) {
+        // Dynamic blob faces towards static blob
+        val dynamicToStatic = staticCenter - dynamicCenter
+        // Static blob faces towards dynamic blob
+        val staticToDynamic = dynamicCenter - staticCenter
+
+        lastDynamicFacingAngleRad = atan2(dynamicToStatic.y, dynamicToStatic.x)
+        lastStaticFacingAngleRad = atan2(staticToDynamic.y, staticToDynamic.x)
+
+        dynamicFacingAngleRad = lastDynamicFacingAngleRad
+        staticFacingAngleRad = lastStaticFacingAngleRad
+    } else {
+        dynamicFacingAngleRad = lastDynamicFacingAngleRad
+        staticFacingAngleRad = lastStaticFacingAngleRad
+    }
+
+    fun smoothstep(x: Float): Float = x * x * (3f - 2f * x)
+
+    /**
+     * Stretch/bridge should only exist while:
+     * - attached
+     * - pulling apart
+     * - near the detach boundary (gap close to 0 but still negative)
+     */
+    val stretchBandPx = 90f   // how deep inside overlap we start stretching
+    val bridgeBandPx = 28f    // how close to 0 gap we allow the ligament
+
+    val targetStretch01 =
+        if (isAttached && isPullingApart) {
+            // gapPx: [-stretchBandPx..0] -> [0..1]
+            val normalized = ((gapPx + stretchBandPx) / stretchBandPx).coerceIn(0f, 1f)
+            smoothstep(normalized)
         } else 0f
 
-    val bridgeStrength =
-        if (attached && pullingApart) {
-            // Additional hard gate: bridge ONLY when gap is near 0 (still negative)
-            // Prevent any bridge deeper inside overlap
-            if (gap < 0f && gap > -bridgeBandPx) {
-                val t = ((gap + bridgeBandPx) / bridgeBandPx).coerceIn(0f, 1f)
-                smoothstep(t)
+    val bridgeStrength01 =
+        if (isAttached && isPullingApart) {
+            // Bridge only when very close to detaching (still overlapping but near 0)
+            if (gapPx < 0f && gapPx > -bridgeBandPx) {
+                val normalized = ((gapPx + bridgeBandPx) / bridgeBandPx).coerceIn(0f, 1f)
+                smoothstep(normalized)
             } else 0f
         } else 0f
 
     // Drive stretch:
-    // - while attached: snap-follow
-    // - when detached: spring back
-    LaunchedEffect(targetStretch, attached) {
-        if (attached) {
-            stretchAnim.snapTo(targetStretch)
+    // - while attached: snap-follow targetStretch01
+    // - when detached: spring back to 0
+    LaunchedEffect(targetStretch01, isAttached) {
+        if (isAttached) {
+            stretchAmountAnim.snapTo(targetStretch01)
         } else {
-            stretchAnim.animateTo(
+            stretchAmountAnim.animateTo(
                 targetValue = 0f,
                 animationSpec = spring(
                     dampingRatio = 0.35f,
@@ -182,211 +191,255 @@ fun GooeyStretchAndSnapSample(
         }
     }
 
-    val stretchPx = 60f * stretchAnim.value
-    val neckTightness = 6.5f
+    /**
+     * Actual stretch amount (px) and "neck" focus:
+     * - stretchPx controls how much the facing side inflates and the back side compresses.
+     * - neckFocusPower controls how tightly the deformation concentrates towards the facing direction.
+     */
+    val stretchPx = 60f * stretchAmountAnim.value
+    val neckFocusPower = 6.5f
 
     Canvas(
         modifier = modifier
             .onSizeChanged { canvasSize = it }
             .pointerInput(Unit) {
                 detectDragGestures(
-                    onDragStart = { currentPosition = it }
+                    onDragStart = { startOffset -> pointerPosition = startOffset }
                 ) { change, _ ->
-                    currentPosition = change.position
+                    pointerPosition = change.position
                     change.consume()
                 }
             }
     ) {
-        pathDynamic.reset()
+        // --- Build stretched blobs ---
+        dynamicBlobPath.reset()
         buildStretchedBlobPath(
-            out = pathDynamic,
+            outPath = dynamicBlobPath,
             center = dynamicCenter,
-            radius = rDynamic,
-            points = 140,
+            baseRadiusPx = dynamicRadiusPx,
+            samplePointCount = 140,
             stretchPx = stretchPx,
-            dirAngle = angleDyn,
-            focusPower = neckTightness,
+            facingAngleRad = dynamicFacingAngleRad,
+            neckFocusPower = neckFocusPower,
             stretchBias = 1.0f
         )
 
-        pathStatic.reset()
+        staticBlobPath.reset()
         buildStretchedBlobPath(
-            out = pathStatic,
+            outPath = staticBlobPath,
             center = staticCenter,
-            radius = rStatic,
-            points = 160,
+            baseRadiusPx = staticRadiusPx,
+            samplePointCount = 160,
             stretchPx = stretchPx * 0.8f,
-            dirAngle = angleSta,
-            focusPower = neckTightness,
+            facingAngleRad = staticFacingAngleRad,
+            neckFocusPower = neckFocusPower,
             stretchBias = 0.9f
         )
 
-        bridgePath.reset()
-        if (bridgeStrength > 0f) {
-            buildBridgePath(
-                out = bridgePath,
-                c1 = dynamicCenter,
-                r1 = rDynamic,
-                a1 = angleDyn,
-                c2 = staticCenter,
-                r2 = rStatic,
-                a2 = angleSta,
-                strength = bridgeStrength
+        // --- Build bridge ligament (THINNER than circles) ---
+        bridgeLigamentPath.reset()
+        if (bridgeStrength01 > 0f) {
+            buildBridgePathThin(
+                outPath = bridgeLigamentPath,
+                firstCenter = dynamicCenter,
+                firstRadiusPx = dynamicRadiusPx,
+                firstFacingAngleRad = dynamicFacingAngleRad,
+                secondCenter = staticCenter,
+                secondRadiusPx = staticRadiusPx,
+                secondFacingAngleRad = staticFacingAngleRad,
+                strength01 = bridgeStrength01,
+
+                // Smaller ligament radius than circles (tune these)
+                bridgeThicknessMaxPx = 14f,
+                bridgeThicknessMinPx = 2.5f
             )
         }
 
-        if (!isPaintSetUp) {
-            paint.shader = LinearGradientShader(
+        // Shader once
+        if (!isShaderInitialized) {
+            strokePaint.shader = LinearGradientShader(
                 from = Offset.Zero,
                 to = Offset(size.width, size.height),
                 colors = listOf(Color(0xffFFEB3B), Color(0xffE91E63)),
                 tileMode = TileMode.Clamp
             )
-            isPaintSetUp = true
+            isShaderInitialized = true
         }
 
-        // Union: (dynamic ∪ static) ∪ bridge
+        // --- Union: (dynamic ∪ static) ∪ bridge ---
         unionPath.reset()
-        unionPath.op(pathDynamic, pathStatic, PathOperation.Union)
+        unionPath.op(dynamicBlobPath, staticBlobPath, PathOperation.Union)
 
-        if (!bridgePath.isEmpty) {
-            tmpUnion.reset()
-            tmpUnion.op(unionPath, bridgePath, PathOperation.Union)
+        if (!bridgeLigamentPath.isEmpty) {
+            tmpUnionPath.reset()
+            tmpUnionPath.op(unionPath, bridgeLigamentPath, PathOperation.Union)
             unionPath.reset()
-            unionPath.addPath(tmpUnion)
+            unionPath.addPath(tmpUnionPath)
         }
 
         drawIntoCanvas { canvas ->
-            canvas.drawPath(unionPath, paint)
+            canvas.drawPath(unionPath, strokePaint)
         }
     }
 }
 
 /**
- * Stretch model: base circle + directional radius term concentrated near dirAngle ("neck")
+ * Builds a "stretched blob":
+ * - Starts as a circle
+ * - Adds an angle-dependent radius term concentrated around [facingAngleRad]
+ * - Slightly compresses the opposite side to preserve volume-ish feel
  */
 private fun buildStretchedBlobPath(
-    out: Path,
+    outPath: Path,
     center: Offset,
-    radius: Float,
-    points: Int,
+    baseRadiusPx: Float,
+    samplePointCount: Int,
     stretchPx: Float,
-    dirAngle: Float,
-    focusPower: Float,
+    facingAngleRad: Float,
+    neckFocusPower: Float,
     stretchBias: Float
 ) {
-    if (points < 16) return
+    if (samplePointCount < 16) return
 
-    val step = (2.0 * Math.PI / points).toFloat()
-    fun smoothstep(x: Float) = x * x * (3f - 2f * x)
+    val angleStepRad = (2.0 * Math.PI / samplePointCount).toFloat()
 
-    fun neckMask(theta: Float): Float {
-        val facing = cos(theta - dirAngle).coerceIn(-1f, 1f)
-        val focused = smoothstep(((facing + 1f) * 0.5f))
-        return focused.pow(focusPower)
+    fun smoothstep01(x: Float): Float = x * x * (3f - 2f * x)
+
+    /**
+     * Returns [0..1] mask that is highest when theta faces [facingAngleRad].
+     * - cos(theta - facingAngle) gives [-1..1]
+     * - remap to [0..1] then apply smoothstep + power for tight neck
+     */
+    fun neckMask(thetaRad: Float): Float {
+        val facingCos = cos(thetaRad - facingAngleRad).coerceIn(-1f, 1f)
+        val facing = (facingCos + 1f) * 0.5f
+        val smoothed = smoothstep01(facing)
+        return smoothed.pow(neckFocusPower)
     }
 
-    fun radial(theta: Float): Float {
-        val m = neckMask(theta)
+    fun radiusAtAnglePx(thetaRad: Float): Float {
+        val neckMask = neckMask(thetaRad)
 
-        val neckPull = (stretchPx * stretchBias) * m
-        val far = 1f - m
-        val compress = -0.22f * stretchPx * far
+        // Inflate the facing side
+        val neckInflationPx = (stretchPx * stretchBias) * neckMask
 
-        return radius + neckPull + compress
+        // Compress the far side (where neckMask ~ 0)
+        val farMask = 1f - neckMask
+        val farCompressionPx = -0.22f * stretchPx * farMask
+
+        return baseRadiusPx + neckInflationPx + farCompressionPx
     }
 
-    var theta = 0f
-    var r = radial(theta)
-    out.moveTo(center.x + r * cos(theta), center.y + r * sin(theta))
+    var angleRad = 0f
+    var radiusPx = radiusAtAnglePx(angleRad)
 
-    for (i in 1..points) {
-        theta = i * step
-        r = radial(theta)
-        out.lineTo(center.x + r * cos(theta), center.y + r * sin(theta))
+    outPath.moveTo(
+        center.x + radiusPx * cos(angleRad),
+        center.y + radiusPx * sin(angleRad)
+    )
+
+    for (pointIndex in 1..samplePointCount) {
+        angleRad = pointIndex * angleStepRad
+        radiusPx = radiusAtAnglePx(angleRad)
+        outPath.lineTo(
+            center.x + radiusPx * cos(angleRad),
+            center.y + radiusPx * sin(angleRad)
+        )
     }
 
-    out.close()
+    outPath.close()
 }
 
 /**
- * Separate "bridge" path (thin ligament) connecting facing arcs.
- * strength in [0..1]:
- * - shrinks angular span (thin string near detach)
- * - reduces handle length (tighter near detach)
+ * Thin bridge ("ligament") connecting the two stretched blobs.
+ *
+ * The key change vs your original bridge:
+ * - The ligament thickness is intentionally SMALL relative to circle radius
+ *   (e.g., 2.5..14 px vs 150 px circle radius).
  */
-private fun buildBridgePath(
-    out: Path,
-    c1: Offset,
-    r1: Float,
-    a1: Float,
-    c2: Offset,
-    r2: Float,
-    a2: Float,
-    strength: Float
+private fun buildBridgePathThin(
+    outPath: Path,
+    firstCenter: Offset,
+    firstRadiusPx: Float,
+    firstFacingAngleRad: Float,
+    secondCenter: Offset,
+    secondRadiusPx: Float,
+    secondFacingAngleRad: Float,
+    strength01: Float,
+    bridgeThicknessMaxPx: Float,
+    bridgeThicknessMinPx: Float
 ) {
-    fun smoothstep(x: Float) = x * x * (3f - 2f * x)
-    fun clamp01(x: Float) = x.coerceIn(0f, 1f)
+    fun smoothstep(x: Float): Float = x * x * (3f - 2f * x)
+    fun clamp(x: Float): Float = x.coerceIn(0f, 1f)
 
-    val t = smoothstep(clamp01(strength))
+    // strength01: 0 -> thicker ligament, 1 -> thinnest near detach
+    val strengthT = smoothstep(clamp(strength01))
 
-    // Ligament thickness in px:
-    // - when t small (far from detach): thicker
-    // - when t→1 (near detach): very thin string
-    val thickMax = 26f
-    val thickMin = 4f
-    val thickness = thickMax + (thickMin - thickMax) * t
+    val ligamentThicknessPx =
+        bridgeThicknessMaxPx + (bridgeThicknessMinPx - bridgeThicknessMaxPx) * strengthT
 
-    // Convert thickness to angle span per-circle: alpha = asin(thickness / r)
-    // Clamp to avoid NaN if thickness > r.
-    fun alphaFor(r: Float): Float {
-        val x = (thickness / max(1f, r)).coerceIn(0f, 0.95f)
-        return asin(x)
+    /**
+     * Convert thickness (px) to half-angle span on each circle:
+     * alpha = asin(thickness / radius)
+     *
+     * Clamp ratio to avoid NaN and to avoid too-wide spans.
+     */
+    fun angleSpanFor(radiusPx: Float): Float {
+        val ratio = (ligamentThicknessPx / max(1f, radiusPx)).coerceIn(0f, 0.35f)
+        return asin(ratio)
     }
 
-    val alpha1 = alphaFor(r1)
-    val alpha2 = alphaFor(r2)
+    val firstAngleSpanRad = angleSpanFor(firstRadiusPx)
+    val secondAngleSpanRad = angleSpanFor(secondRadiusPx)
 
-    fun point(center: Offset, r: Float, ang: Float): Offset =
-        Offset(center.x + r * cos(ang), center.y + r * sin(ang))
+    fun pointOnCircle(center: Offset, radiusPx: Float, angleRad: Float): Offset =
+        Offset(center.x + radiusPx * cos(angleRad), center.y + radiusPx * sin(angleRad))
 
-    fun tangentUnit(ang: Float): Offset =
-        Offset(-sin(ang), cos(ang))
+    fun tangentUnit(angleRad: Float): Offset =
+        Offset(-sin(angleRad), cos(angleRad))
 
-    // Connection points (top/bottom around facing axis)
-    val p1Top = point(c1, r1, a1 + alpha1)
-    val p1Bot = point(c1, r1, a1 - alpha1)
+    // Facing arc endpoints around facing direction
+    val firstTop = pointOnCircle(firstCenter, firstRadiusPx, firstFacingAngleRad + firstAngleSpanRad)
+    val firstBottom = pointOnCircle(firstCenter, firstRadiusPx, firstFacingAngleRad - firstAngleSpanRad)
 
-    // Opposite orientation for the other circle
-    val p2Top = point(c2, r2, a2 - alpha2)
-    val p2Bot = point(c2, r2, a2 + alpha2)
+    // Opposite orientation for the other circle's facing direction
+    val secondTop = pointOnCircle(secondCenter, secondRadiusPx, secondFacingAngleRad - secondAngleSpanRad)
+    val secondBottom = pointOnCircle(secondCenter, secondRadiusPx, secondFacingAngleRad + secondAngleSpanRad)
 
-    // Handle length should be based on span between endpoints to avoid outward bulge
-    val spanTop = (p2Top - p1Top).getDistance()
-    val spanBot = (p1Bot - p2Bot).getDistance()
-    val span = min(spanTop, spanBot)
+    // Handle length based on endpoint span (keep it modest to avoid outward bulge)
+    val topSpanPx = (secondTop - firstTop).getDistance()
+    val bottomSpanPx = (firstBottom - secondBottom).getDistance()
+    val minSpanPx = min(topSpanPx, bottomSpanPx)
 
-    // Keep handles modest: too large => outward bow => bulge after union
-    val handle = (span * 0.35f).coerceIn(6f, min(r1, r2) * 0.35f)
+    val maxHandlePx = min(firstRadiusPx, secondRadiusPx) * 0.25f
+    val handleLengthPx = (minSpanPx * 0.30f).coerceIn(4f, maxHandlePx)
 
-    val t1Top = tangentUnit(a1 + alpha1)
-    val t1Bot = tangentUnit(a1 - alpha1)
-    val t2Top = tangentUnit(a2 - alpha2)
-    val t2Bot = tangentUnit(a2 + alpha2)
+    val firstTopTangent = tangentUnit(firstFacingAngleRad + firstAngleSpanRad)
+    val firstBottomTangent = tangentUnit(firstFacingAngleRad - firstAngleSpanRad)
 
-    val c1Top = p1Top + t1Top * handle
-    val c2Top = p2Top - t2Top * handle
+    val secondTopTangent = tangentUnit(secondFacingAngleRad - secondAngleSpanRad)
+    val secondBottomTangent = tangentUnit(secondFacingAngleRad + secondAngleSpanRad)
 
-    val c1Bot = p2Bot + t2Bot * handle
-    val c2Bot = p1Bot - t1Bot * handle
+    val firstTopCtrl = firstTop + firstTopTangent * handleLengthPx
+    val secondTopCtrl = secondTop - secondTopTangent * handleLengthPx
 
-    out.moveTo(p1Top.x, p1Top.y)
-    out.cubicTo(c1Top.x, c1Top.y, c2Top.x, c2Top.y, p2Top.x, p2Top.y)
-    out.lineTo(p2Bot.x, p2Bot.y)
-    out.cubicTo(c1Bot.x, c1Bot.y, c2Bot.x, c2Bot.y, p1Bot.x, p1Bot.y)
-    out.close()
+    val secondBottomCtrl = secondBottom + secondBottomTangent * handleLengthPx
+    val firstBottomCtrl = firstBottom - firstBottomTangent * handleLengthPx
+
+    outPath.moveTo(firstTop.x, firstTop.y)
+    outPath.cubicTo(
+        firstTopCtrl.x, firstTopCtrl.y,
+        secondTopCtrl.x, secondTopCtrl.y,
+        secondTop.x, secondTop.y
+    )
+    outPath.lineTo(secondBottom.x, secondBottom.y)
+    outPath.cubicTo(
+        secondBottomCtrl.x, secondBottomCtrl.y,
+        firstBottomCtrl.x, firstBottomCtrl.y,
+        firstBottom.x, firstBottom.y
+    )
+    outPath.close()
 }
-
 
 @Preview(showBackground = true, widthDp = 420, heightDp = 720)
 @Composable
