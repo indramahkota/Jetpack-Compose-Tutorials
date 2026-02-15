@@ -1,6 +1,7 @@
 package com.smarttoolfactory.tutorial4_1chatbot.ui.component.input
 
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -32,14 +34,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-
+import com.smarttoolfactory.tutorial4_1chatbot.R
 
 @Preview
 @Composable
@@ -64,7 +68,6 @@ fun ChatTextFieldPreview() {
         ) {
             Text("Enabled: $enabled")
         }
-
 
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -116,28 +119,52 @@ internal fun ChatTextField(
         }
     }
 ) {
+
+    var isFocused by remember {
+        mutableStateOf(false)
+    }
+
+    val padding by animateDpAsState(
+        targetValue = if (isFocused) 16.dp else 0.dp,
+        animationSpec = tween(1000)
+    )
+
     Surface(
-        modifier = modifier,
+        modifier = modifier.padding(horizontal = padding),
         shape = RoundedCornerShape(24.dp),
-        color = Color.White,
-        border = BorderStroke(1.dp, Color.Gray),
-        shadowElevation = 1.dp
+        color = Color.White
     ) {
         Row(
             modifier = Modifier.padding(vertical = 4.dp),
             verticalAlignment = Alignment.Bottom
         ) {
+
+            IconButton(
+                modifier = Modifier.size(40.dp),
+                onClick = {
+
+                }
+            ) {
+                Icon(
+                    imageVector =Icons.Rounded.Add ,
+                    contentDescription = null
+                )
+            }
+
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .heightIn(min = 40.dp)
-                    .padding(start = 24.dp),
+                    .padding(start = 16.dp),
                 contentAlignment = Alignment.CenterStart
             ) {
                 BasicTextField(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .focusRequester(focusRequester),
+                        .focusRequester(focusRequester)
+                        .onFocusChanged { focusState ->
+                            isFocused = focusState.isFocused
+                        },
                     textStyle = TextStyle(fontSize = 18.sp),
                     enabled = enabled,
                     value = value,
