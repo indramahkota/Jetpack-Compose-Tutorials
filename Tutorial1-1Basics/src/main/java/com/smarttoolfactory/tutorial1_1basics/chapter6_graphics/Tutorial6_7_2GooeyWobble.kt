@@ -624,10 +624,10 @@ private fun computeLigamentGeometry(
 @Preview(showBackground = true, widthDp = 420, heightDp = 720)
 @Composable
 private fun GooeyStretchAndSnapSample_Preview() {
-    var minStretchScaleAtTouch by remember { mutableFloatStateOf(0.20f) }
-    var shallowOverlapBandPx by remember { mutableFloatStateOf(45f) }
+    var minStretchScaleAtTouch by remember { mutableFloatStateOf(0.60f) }
+    var shallowOverlapBandPx by remember { mutableFloatStateOf(100f) }
 
-    var bridgeThicknessMaxPx by remember { mutableFloatStateOf(14f) }
+    var bridgeThicknessMaxPx by remember { mutableFloatStateOf(32f) }
     var bridgeThicknessMinPx by remember { mutableFloatStateOf(2.5f) }
 
     var bridgeHandleScale by remember { mutableFloatStateOf(1.0f) }
