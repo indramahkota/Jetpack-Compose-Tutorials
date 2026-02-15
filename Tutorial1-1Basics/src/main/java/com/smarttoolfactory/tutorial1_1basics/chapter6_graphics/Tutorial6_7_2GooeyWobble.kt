@@ -6,10 +6,27 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.runtime.*
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -20,11 +37,15 @@ import androidx.compose.ui.graphics.PaintingStyle
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlin.math.asin
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -32,52 +53,97 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.sin
+import kotlin.math.sqrt
+
+enum class StretchPhase {
+    None, Early, Late
+}
+
+data class GooeyDebugState(
+    val isAttached: Boolean,
+    val isPullingApart: Boolean,
+    val gapPx: Float,
+    val overlapDepthPx: Float,
+    val targetStretch: Float,
+    val bridgeStrength: Float,
+    val phase: StretchPhase,
+    val ligamentThicknessPx: Float?,
+    val handleLengthPx: Float?
+)
+
+/**
+ * Geometry computed off-main-thread.
+ *
+ * Points are stored as [FloatArray] in x,y interleaved form:
+ *   [x0, y0, x1, y1, ...]
+ */
+private data class GooeyGeometryResult(
+    val dynamicPoints: FloatArray,
+    val staticPoints: FloatArray,
+    val ligament: LigamentGeometry?
+)
 
 @Composable
 fun GooeyStretchAndSnapSample(
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+
+    // Stretch limiter near shallow overlap
+    minStretchScaleAtTouch: Float = 0.20f,
+    shallowOverlapBandPx: Float = 45f,
+
+    // Bridge thickness (px)
+    bridgeThicknessMaxPx: Float = 14f,
+    bridgeThicknessMinPx: Float = 2.5f,
+
+    // Bridge curvature control (dimensionless)
+    bridgeHandleScale: Float = 1.0f,
+
+    // Debug rendering toggles
+    debugEnabled: Boolean = false,
+    debugDrawLigament: Boolean = true,
+    debugDrawHandles: Boolean = true,
+    debugDrawVectors: Boolean = true,
+    debugDrawArcSpans: Boolean = true,
+
+    // Debug state callback (Preview uses this to show EARLY/LATE)
+    onDebugState: (GooeyDebugState) -> Unit = {}
 ) {
-    // Dynamic (dragged) blob, static (center) blob, bridge ligament, and union result
+    // Paths built on main thread (safe)
     val dynamicBlobPath = remember { Path() }
     val staticBlobPath = remember { Path() }
-    val bridgeLigamentPath = remember { Path() }
+    val ligamentPath = remember { Path() }
     val unionPath = remember { Path() }
     val tmpUnionPath = remember { Path() }
 
-    // Pointer position (dynamic center) and canvas size (static center is canvas center)
     var pointerPosition by remember { mutableStateOf(Offset.Unspecified) }
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
 
-    // Stroke paint + gradient shader setup
-    val strokePaint = remember {
+    val unionPaint = remember {
         Paint().apply {
             style = PaintingStyle.Stroke
             strokeWidth = 4f
+            isAntiAlias = true
         }
     }
     var isShaderInitialized by remember { mutableStateOf(false) }
 
-    /**
-     * Stretch amount in [0..1] is driven by "near detach while pulling apart".
-     * When detached, it springs back to 0 (no stretch).
-     */
-    val stretchAmountAnim = remember { Animatable(0f) }
+    val stretchAmount = remember { Animatable(0f) }
 
-    // --- Attachment hysteresis (prevents flicker at the contact boundary) ---
+    // Attachment hysteresis
     var isAttached by remember { mutableStateOf(true) }
-    val detachGapThresholdPx = 2f   // gap > this => detached
-    val attachGapThresholdPx = -2f  // gap < this => attached again
+    val detachGapThresholdPx = 2f
+    val attachGapThresholdPx = -2f
 
-    // --- Pulling-apart detection (EMA + hysteresis on gap velocity) ---
+    // Pulling apart detection (EMA + hysteresis)
     var previousGapPx by remember { mutableFloatStateOf(Float.NaN) }
     var gapVelocityEma by remember { mutableFloatStateOf(0f) }
     var isPullingApart by remember { mutableStateOf(false) }
 
-    // --- Stable angles (avoid atan2 noise when centers almost coincide) ---
+    // Stable angles
     var lastDynamicFacingAngleRad by remember { mutableFloatStateOf(0f) }
     var lastStaticFacingAngleRad by remember { mutableFloatStateOf(Math.PI.toFloat()) }
 
-    // --- Geometry ---
+    // Geometry
     val staticCenter = remember(canvasSize) { Offset(canvasSize.width / 2f, canvasSize.height / 2f) }
     val dynamicCenter = if (pointerPosition == Offset.Unspecified) staticCenter else pointerPosition
 
@@ -85,13 +151,12 @@ fun GooeyStretchAndSnapSample(
     val staticRadiusPx = 150f
     val sumRadiiPx = dynamicRadiusPx + staticRadiusPx
 
-    val centerDelta = dynamicCenter - staticCenter
-    val centersDistancePx = centerDelta.getDistance()
+    val centersDistancePx = (dynamicCenter - staticCenter).getDistance()
 
     /**
      * gapPx:
-     *  <= 0  -> circles overlap / attached
-     *  >  0  -> separated / detached
+     *  <= 0  -> overlapping (attached)
+     *  >  0  -> separated (detached)
      */
     val gapPx = centersDistancePx - sumRadiiPx
 
@@ -104,20 +169,16 @@ fun GooeyStretchAndSnapSample(
         }
     }
 
-    // Update pulling-apart with EMA velocity + hysteresis
+    // Update pulling apart detection
     LaunchedEffect(gapPx) {
-        val oldGapPx = previousGapPx
-        if (!oldGapPx.isNaN()) {
-            // Positive => moving apart (toward detach)
-            val gapDeltaPx = gapPx - oldGapPx
-
-            // EMA smoothing to avoid jitter
+        val oldGap = previousGapPx
+        if (!oldGap.isNaN()) {
+            val gapDeltaPx = gapPx - oldGap
             val emaAlpha = 0.25f
             gapVelocityEma = gapVelocityEma + (gapDeltaPx - gapVelocityEma) * emaAlpha
         }
         previousGapPx = gapPx
 
-        // Hysteresis thresholds for "pulling apart" state
         val pullingOnThreshold = 0.20f
         val pullingOffThreshold = -0.20f
 
@@ -128,13 +189,11 @@ fun GooeyStretchAndSnapSample(
         }
     }
 
-    // Facing angles: only update when distance is meaningful
+    // Facing angles
     val dynamicFacingAngleRad: Float
     val staticFacingAngleRad: Float
     if (centersDistancePx > 6f) {
-        // Dynamic blob faces towards static blob
         val dynamicToStatic = staticCenter - dynamicCenter
-        // Static blob faces towards dynamic blob
         val staticToDynamic = dynamicCenter - staticCenter
 
         lastDynamicFacingAngleRad = atan2(dynamicToStatic.y, dynamicToStatic.x)
@@ -149,55 +208,141 @@ fun GooeyStretchAndSnapSample(
 
     fun smoothstep(x: Float): Float = x * x * (3f - 2f * x)
 
-    /**
-     * Stretch/bridge should only exist while:
-     * - attached
-     * - pulling apart
-     * - near the detach boundary (gap close to 0 but still negative)
-     */
-    val stretchBandPx = 90f   // how deep inside overlap we start stretching
-    val bridgeBandPx = 28f    // how close to 0 gap we allow the ligament
+    // Stretch + bridge gating bands
+    val stretchBandPx = 90f
+    val bridgeBandPx = 28f
 
-    val targetStretch01 =
+    val targetStretch =
         if (isAttached && isPullingApart) {
-            // gapPx: [-stretchBandPx..0] -> [0..1]
             val normalized = ((gapPx + stretchBandPx) / stretchBandPx).coerceIn(0f, 1f)
             smoothstep(normalized)
         } else 0f
 
-    val bridgeStrength01 =
+    /**
+     * bridgeStrength rises when gap is near 0 (still negative).
+     * 0 -> no ligament
+     * 1 -> right near detachment
+     */
+    val bridgeStrength =
         if (isAttached && isPullingApart) {
-            // Bridge only when very close to detaching (still overlapping but near 0)
             if (gapPx < 0f && gapPx > -bridgeBandPx) {
                 val normalized = ((gapPx + bridgeBandPx) / bridgeBandPx).coerceIn(0f, 1f)
                 smoothstep(normalized)
             } else 0f
         } else 0f
 
-    // Drive stretch:
-    // - while attached: snap-follow targetStretch01
-    // - when detached: spring back to 0
-    LaunchedEffect(targetStretch01, isAttached) {
+    // Drive stretch anim
+    LaunchedEffect(targetStretch, isAttached) {
         if (isAttached) {
-            stretchAmountAnim.snapTo(targetStretch01)
+            stretchAmount.snapTo(targetStretch)
         } else {
-            stretchAmountAnim.animateTo(
+            stretchAmount.animateTo(
                 targetValue = 0f,
-                animationSpec = spring(
-                    dampingRatio = 0.35f,
-                    stiffness = 320f
-                )
+                animationSpec = spring(dampingRatio = 0.35f, stiffness = 320f)
             )
         }
     }
 
-    /**
-     * Actual stretch amount (px) and "neck" focus:
-     * - stretchPx controls how much the facing side inflates and the back side compresses.
-     * - neckFocusPower controls how tightly the deformation concentrates towards the facing direction.
-     */
-    val stretchPx = 60f * stretchAmountAnim.value
+    // Shallow-overlap limiter (prevents huge neck when overlap is tiny)
+    val overlapDepthPx = max(0f, -gapPx)
+    val safeBandPx = max(1f, shallowOverlapBandPx)
+    val overlapDepthFraction = (overlapDepthPx / safeBandPx).coerceIn(0f, 1f)
+    val overlapRamp = smoothstep(overlapDepthFraction)
+
+    val minScale = minStretchScaleAtTouch.coerceIn(0f, 1f)
+    val shallowOverlapStretchScale = minScale + (1f - minScale) * overlapRamp
+
+    val baseStretchPx = 60f * stretchAmount.value
+    val effectiveStretchPx = baseStretchPx * shallowOverlapStretchScale
     val neckFocusPower = 6.5f
+
+    // Phase indicator
+    val phase =
+        if (!(isAttached && isPullingApart) || targetStretch <= 0f) {
+            StretchPhase.None
+        } else {
+            if (bridgeStrength <= 0f) StretchPhase.Early else StretchPhase.Late
+        }
+
+    // --- Off-main-thread geometry computation ---
+    var geometryResult by remember { mutableStateOf<GooeyGeometryResult?>(null) }
+
+    LaunchedEffect(
+        dynamicCenter,
+        staticCenter,
+        dynamicRadiusPx,
+        staticRadiusPx,
+        dynamicFacingAngleRad,
+        staticFacingAngleRad,
+        effectiveStretchPx,
+        neckFocusPower,
+        bridgeStrength,
+        bridgeThicknessMaxPx,
+        bridgeThicknessMinPx,
+        bridgeHandleScale
+    ) {
+        geometryResult = withContext(Dispatchers.Default) {
+            val dynamicPoints = buildStretchedBlobPoints(
+                center = dynamicCenter,
+                baseRadiusPx = dynamicRadiusPx,
+                samplePointCount = 140,
+                stretchPx = effectiveStretchPx,
+                facingAngleRad = dynamicFacingAngleRad,
+                neckFocusPower = neckFocusPower,
+                stretchBias = 1.0f
+            )
+
+            val staticPoints = buildStretchedBlobPoints(
+                center = staticCenter,
+                baseRadiusPx = staticRadiusPx,
+                samplePointCount = 160,
+                stretchPx = effectiveStretchPx * 0.8f,
+                facingAngleRad = staticFacingAngleRad,
+                neckFocusPower = neckFocusPower,
+                stretchBias = 0.9f
+            )
+
+            val ligamentGeometry =
+                if (bridgeStrength > 0f) {
+                    computeLigamentGeometry(
+                        firstCenter = dynamicCenter,
+                        firstRadiusPx = dynamicRadiusPx,
+                        firstFacingAngleRad = dynamicFacingAngleRad,
+                        secondCenter = staticCenter,
+                        secondRadiusPx = staticRadiusPx,
+                        secondFacingAngleRad = staticFacingAngleRad,
+                        strength = bridgeStrength,
+                        bridgeThicknessMaxPx = bridgeThicknessMaxPx,
+                        bridgeThicknessMinPx = bridgeThicknessMinPx,
+                        bridgeHandleScale = bridgeHandleScale
+                    )
+                } else null
+
+            GooeyGeometryResult(
+                dynamicPoints = dynamicPoints,
+                staticPoints = staticPoints,
+                ligament = ligamentGeometry
+            )
+        }
+    }
+
+    // Feed debug info back to Preview
+    SideEffect {
+        val ligament = geometryResult?.ligament
+        onDebugState(
+            GooeyDebugState(
+                isAttached = isAttached,
+                isPullingApart = isPullingApart,
+                gapPx = gapPx,
+                overlapDepthPx = overlapDepthPx,
+                targetStretch = targetStretch,
+                bridgeStrength = bridgeStrength,
+                phase = phase,
+                ligamentThicknessPx = ligament?.ligamentThicknessPx,
+                handleLengthPx = ligament?.handleLengthPx
+            )
+        )
+    }
 
     Canvas(
         modifier = modifier
@@ -211,53 +356,86 @@ fun GooeyStretchAndSnapSample(
                 }
             }
     ) {
-        // --- Build stretched blobs ---
+        val geom = geometryResult ?: return@Canvas
+
+        // Build paths on main thread using precomputed points.
         dynamicBlobPath.reset()
-        buildStretchedBlobPath(
-            outPath = dynamicBlobPath,
-            center = dynamicCenter,
-            baseRadiusPx = dynamicRadiusPx,
-            samplePointCount = 140,
-            stretchPx = stretchPx,
-            facingAngleRad = dynamicFacingAngleRad,
-            neckFocusPower = neckFocusPower,
-            stretchBias = 1.0f
-        )
+        fillPathFromPoints(dynamicBlobPath, geom.dynamicPoints)
 
         staticBlobPath.reset()
-        buildStretchedBlobPath(
-            outPath = staticBlobPath,
-            center = staticCenter,
-            baseRadiusPx = staticRadiusPx,
-            samplePointCount = 160,
-            stretchPx = stretchPx * 0.8f,
-            facingAngleRad = staticFacingAngleRad,
-            neckFocusPower = neckFocusPower,
-            stretchBias = 0.9f
-        )
+        fillPathFromPoints(staticBlobPath, geom.staticPoints)
 
-        // --- Build bridge ligament (THINNER than circles) ---
-        bridgeLigamentPath.reset()
-        if (bridgeStrength01 > 0f) {
-            buildBridgePathThin(
-                outPath = bridgeLigamentPath,
-                firstCenter = dynamicCenter,
-                firstRadiusPx = dynamicRadiusPx,
-                firstFacingAngleRad = dynamicFacingAngleRad,
-                secondCenter = staticCenter,
-                secondRadiusPx = staticRadiusPx,
-                secondFacingAngleRad = staticFacingAngleRad,
-                strength01 = bridgeStrength01,
-
-                // Smaller ligament radius than circles (tune these)
-                bridgeThicknessMaxPx = 14f,
-                bridgeThicknessMinPx = 2.5f
+        ligamentPath.reset()
+        val ligament = geom.ligament
+        if (ligament != null) {
+            ligamentPath.moveTo(ligament.firstTop.x, ligament.firstTop.y)
+            ligamentPath.cubicTo(
+                ligament.firstTopControl.x, ligament.firstTopControl.y,
+                ligament.secondTopControl.x, ligament.secondTopControl.y,
+                ligament.secondTop.x, ligament.secondTop.y
             )
+            ligamentPath.lineTo(ligament.secondBottom.x, ligament.secondBottom.y)
+            ligamentPath.cubicTo(
+                ligament.secondBottomControl.x, ligament.secondBottomControl.y,
+                ligament.firstBottomControl.x, ligament.firstBottomControl.y,
+                ligament.firstBottom.x, ligament.firstBottom.y
+            )
+            ligamentPath.close()
         }
 
-        // Shader once
+        // Debug overlays
+        if (debugEnabled) {
+            if (debugDrawLigament && !ligamentPath.isEmpty) {
+                drawPath(
+                    path = ligamentPath,
+                    color = Color.Cyan,
+                    style = Stroke(width = 3f)
+                )
+            }
+
+            if (ligament != null) {
+                if (debugDrawHandles) {
+                    drawLine(Color.Magenta, ligament.firstTop, ligament.firstTopControl, strokeWidth = 2f)
+                    drawLine(Color.Magenta, ligament.secondTop, ligament.secondTopControl, strokeWidth = 2f)
+                    drawLine(Color.Magenta, ligament.secondBottom, ligament.secondBottomControl, strokeWidth = 2f)
+                    drawLine(Color.Magenta, ligament.firstBottom, ligament.firstBottomControl, strokeWidth = 2f)
+
+                    drawCircle(Color.Magenta, radius = 4f, center = ligament.firstTopControl)
+                    drawCircle(Color.Magenta, radius = 4f, center = ligament.secondTopControl)
+                    drawCircle(Color.Magenta, radius = 4f, center = ligament.secondBottomControl)
+                    drawCircle(Color.Magenta, radius = 4f, center = ligament.firstBottomControl)
+                }
+
+                if (debugDrawArcSpans) {
+                    drawCircle(Color.Yellow, radius = 5f, center = ligament.firstTop)
+                    drawCircle(Color.Yellow, radius = 5f, center = ligament.firstBottom)
+                    drawCircle(Color.Yellow, radius = 5f, center = ligament.secondTop)
+                    drawCircle(Color.Yellow, radius = 5f, center = ligament.secondBottom)
+
+                    drawLine(Color.Yellow, ligament.firstCenter, ligament.firstTop, strokeWidth = 1.5f)
+                    drawLine(Color.Yellow, ligament.firstCenter, ligament.firstBottom, strokeWidth = 1.5f)
+                    drawLine(Color.Yellow, ligament.secondCenter, ligament.secondTop, strokeWidth = 1.5f)
+                    drawLine(Color.Yellow, ligament.secondCenter, ligament.secondBottom, strokeWidth = 1.5f)
+                }
+            }
+
+            if (debugDrawVectors) {
+                drawLine(Color.White, dynamicCenter, staticCenter, strokeWidth = 1.5f)
+
+                val dynDir = Offset(cos(dynamicFacingAngleRad), sin(dynamicFacingAngleRad))
+                val staDir = Offset(cos(staticFacingAngleRad), sin(staticFacingAngleRad))
+
+                drawLine(Color.Green, dynamicCenter, dynamicCenter + dynDir * (dynamicRadiusPx * 0.9f), strokeWidth = 2f)
+                drawLine(Color.Green, staticCenter, staticCenter + staDir * (staticRadiusPx * 0.9f), strokeWidth = 2f)
+
+                drawCircle(Color(0x55FFFFFF), radius = dynamicRadiusPx, center = dynamicCenter, style = Stroke(width = 1f))
+                drawCircle(Color(0x55FFFFFF), radius = staticRadiusPx, center = staticCenter, style = Stroke(width = 1f))
+            }
+        }
+
+        // Union shader once
         if (!isShaderInitialized) {
-            strokePaint.shader = LinearGradientShader(
+            unionPaint.shader = LinearGradientShader(
                 from = Offset.Zero,
                 to = Offset(size.width, size.height),
                 colors = listOf(Color(0xffFFEB3B), Color(0xffE91E63)),
@@ -266,31 +444,28 @@ fun GooeyStretchAndSnapSample(
             isShaderInitialized = true
         }
 
-        // --- Union: (dynamic ∪ static) ∪ bridge ---
+        // Final union: (dynamic ∪ static) ∪ ligament
         unionPath.reset()
         unionPath.op(dynamicBlobPath, staticBlobPath, PathOperation.Union)
 
-        if (!bridgeLigamentPath.isEmpty) {
+        if (!ligamentPath.isEmpty) {
             tmpUnionPath.reset()
-            tmpUnionPath.op(unionPath, bridgeLigamentPath, PathOperation.Union)
+            tmpUnionPath.op(unionPath, ligamentPath, PathOperation.Union)
             unionPath.reset()
             unionPath.addPath(tmpUnionPath)
         }
 
         drawIntoCanvas { canvas ->
-            canvas.drawPath(unionPath, strokePaint)
+            canvas.drawPath(unionPath, unionPaint)
         }
     }
 }
 
 /**
- * Builds a "stretched blob":
- * - Starts as a circle
- * - Adds an angle-dependent radius term concentrated around [facingAngleRad]
- * - Slightly compresses the opposite side to preserve volume-ish feel
+ * Heavy trig/pow loop moved off-main-thread:
+ * returns polyline points describing the stretched blob boundary.
  */
-private fun buildStretchedBlobPath(
-    outPath: Path,
+private fun buildStretchedBlobPoints(
     center: Offset,
     baseRadiusPx: Float,
     samplePointCount: Int,
@@ -298,92 +473,99 @@ private fun buildStretchedBlobPath(
     facingAngleRad: Float,
     neckFocusPower: Float,
     stretchBias: Float
-) {
-    if (samplePointCount < 16) return
+): FloatArray {
+    if (samplePointCount < 16) return FloatArray(0)
+
+    val points = FloatArray((samplePointCount + 1) * 2)
 
     val angleStepRad = (2.0 * Math.PI / samplePointCount).toFloat()
 
-    fun smoothstep01(x: Float): Float = x * x * (3f - 2f * x)
+    fun smoothstep(x: Float): Float = x * x * (3f - 2f * x)
 
-    /**
-     * Returns [0..1] mask that is highest when theta faces [facingAngleRad].
-     * - cos(theta - facingAngle) gives [-1..1]
-     * - remap to [0..1] then apply smoothstep + power for tight neck
-     */
     fun neckMask(thetaRad: Float): Float {
         val facingCos = cos(thetaRad - facingAngleRad).coerceIn(-1f, 1f)
-        val facing = (facingCos + 1f) * 0.5f
-        val smoothed = smoothstep01(facing)
-        return smoothed.pow(neckFocusPower)
+        val facingFraction = (facingCos + 1f) * 0.5f
+        val smoothedFacing = smoothstep(facingFraction)
+        return smoothedFacing.pow(neckFocusPower)
     }
 
-    fun radiusAtAnglePx(thetaRad: Float): Float {
-        val neckMask = neckMask(thetaRad)
+    fun radiusAtAngle(thetaRad: Float): Float {
+        val mask = neckMask(thetaRad)
 
-        // Inflate the facing side
-        val neckInflationPx = (stretchPx * stretchBias) * neckMask
-
-        // Compress the far side (where neckMask ~ 0)
-        val farMask = 1f - neckMask
+        val neckInflationPx = (stretchPx * stretchBias) * mask
+        val farMask = 1f - mask
         val farCompressionPx = -0.22f * stretchPx * farMask
 
         return baseRadiusPx + neckInflationPx + farCompressionPx
     }
 
     var angleRad = 0f
-    var radiusPx = radiusAtAnglePx(angleRad)
-
-    outPath.moveTo(
-        center.x + radiusPx * cos(angleRad),
-        center.y + radiusPx * sin(angleRad)
-    )
-
-    for (pointIndex in 1..samplePointCount) {
-        angleRad = pointIndex * angleStepRad
-        radiusPx = radiusAtAnglePx(angleRad)
-        outPath.lineTo(
-            center.x + radiusPx * cos(angleRad),
-            center.y + radiusPx * sin(angleRad)
-        )
+    for (i in 0..samplePointCount) {
+        angleRad = i * angleStepRad
+        val radiusPx = radiusAtAngle(angleRad)
+        val x = center.x + radiusPx * cos(angleRad)
+        val y = center.y + radiusPx * sin(angleRad)
+        val idx = i * 2
+        points[idx] = x
+        points[idx + 1] = y
     }
 
-    outPath.close()
+    return points
 }
 
 /**
- * Thin bridge ("ligament") connecting the two stretched blobs.
- *
- * The key change vs your original bridge:
- * - The ligament thickness is intentionally SMALL relative to circle radius
- *   (e.g., 2.5..14 px vs 150 px circle radius).
+ * Cheap main-thread reconstruction:
+ * consumes [FloatArray] x,y points and builds a closed polygonal [Path].
  */
-private fun buildBridgePathThin(
-    outPath: Path,
+private fun fillPathFromPoints(outPath: Path, points: FloatArray) {
+    if (points.isEmpty()) return
+    outPath.moveTo(points[0], points[1])
+    var i = 2
+    while (i < points.size) {
+        outPath.lineTo(points[i], points[i + 1])
+        i += 2
+    }
+    outPath.close()
+}
+
+private data class LigamentGeometry(
+    val firstCenter: Offset,
+    val secondCenter: Offset,
+
+    val firstTop: Offset,
+    val firstBottom: Offset,
+    val secondTop: Offset,
+    val secondBottom: Offset,
+
+    val firstTopControl: Offset,
+    val secondTopControl: Offset,
+    val secondBottomControl: Offset,
+    val firstBottomControl: Offset,
+
+    val ligamentThicknessPx: Float,
+    val handleLengthPx: Float
+)
+
+private fun computeLigamentGeometry(
     firstCenter: Offset,
     firstRadiusPx: Float,
     firstFacingAngleRad: Float,
     secondCenter: Offset,
     secondRadiusPx: Float,
     secondFacingAngleRad: Float,
-    strength01: Float,
+    strength: Float,
     bridgeThicknessMaxPx: Float,
-    bridgeThicknessMinPx: Float
-) {
+    bridgeThicknessMinPx: Float,
+    bridgeHandleScale: Float
+): LigamentGeometry {
     fun smoothstep(x: Float): Float = x * x * (3f - 2f * x)
     fun clamp(x: Float): Float = x.coerceIn(0f, 1f)
 
-    // strength01: 0 -> thicker ligament, 1 -> thinnest near detach
-    val strengthT = smoothstep(clamp(strength01))
+    val strengthSmoothed = smoothstep(clamp(strength))
 
     val ligamentThicknessPx =
-        bridgeThicknessMaxPx + (bridgeThicknessMinPx - bridgeThicknessMaxPx) * strengthT
+        bridgeThicknessMaxPx + (bridgeThicknessMinPx - bridgeThicknessMaxPx) * strengthSmoothed
 
-    /**
-     * Convert thickness (px) to half-angle span on each circle:
-     * alpha = asin(thickness / radius)
-     *
-     * Clamp ratio to avoid NaN and to avoid too-wide spans.
-     */
     fun angleSpanFor(radiusPx: Float): Float {
         val ratio = (ligamentThicknessPx / max(1f, radiusPx)).coerceIn(0f, 0.35f)
         return asin(ratio)
@@ -395,24 +577,21 @@ private fun buildBridgePathThin(
     fun pointOnCircle(center: Offset, radiusPx: Float, angleRad: Float): Offset =
         Offset(center.x + radiusPx * cos(angleRad), center.y + radiusPx * sin(angleRad))
 
-    fun tangentUnit(angleRad: Float): Offset =
-        Offset(-sin(angleRad), cos(angleRad))
+    fun tangentUnit(angleRad: Float): Offset = Offset(-sin(angleRad), cos(angleRad))
 
-    // Facing arc endpoints around facing direction
     val firstTop = pointOnCircle(firstCenter, firstRadiusPx, firstFacingAngleRad + firstAngleSpanRad)
     val firstBottom = pointOnCircle(firstCenter, firstRadiusPx, firstFacingAngleRad - firstAngleSpanRad)
 
-    // Opposite orientation for the other circle's facing direction
     val secondTop = pointOnCircle(secondCenter, secondRadiusPx, secondFacingAngleRad - secondAngleSpanRad)
     val secondBottom = pointOnCircle(secondCenter, secondRadiusPx, secondFacingAngleRad + secondAngleSpanRad)
 
-    // Handle length based on endpoint span (keep it modest to avoid outward bulge)
     val topSpanPx = (secondTop - firstTop).getDistance()
     val bottomSpanPx = (firstBottom - secondBottom).getDistance()
     val minSpanPx = min(topSpanPx, bottomSpanPx)
 
     val maxHandlePx = min(firstRadiusPx, secondRadiusPx) * 0.25f
-    val handleLengthPx = (minSpanPx * 0.30f).coerceIn(4f, maxHandlePx)
+    val baseHandlePx = (minSpanPx * 0.30f).coerceIn(4f, maxHandlePx)
+    val handleLengthPx = (baseHandlePx * bridgeHandleScale).coerceIn(1f, maxHandlePx)
 
     val firstTopTangent = tangentUnit(firstFacingAngleRad + firstAngleSpanRad)
     val firstBottomTangent = tangentUnit(firstFacingAngleRad - firstAngleSpanRad)
@@ -420,35 +599,165 @@ private fun buildBridgePathThin(
     val secondTopTangent = tangentUnit(secondFacingAngleRad - secondAngleSpanRad)
     val secondBottomTangent = tangentUnit(secondFacingAngleRad + secondAngleSpanRad)
 
-    val firstTopCtrl = firstTop + firstTopTangent * handleLengthPx
-    val secondTopCtrl = secondTop - secondTopTangent * handleLengthPx
+    val firstTopControl = firstTop + firstTopTangent * handleLengthPx
+    val secondTopControl = secondTop - secondTopTangent * handleLengthPx
 
-    val secondBottomCtrl = secondBottom + secondBottomTangent * handleLengthPx
-    val firstBottomCtrl = firstBottom - firstBottomTangent * handleLengthPx
+    val secondBottomControl = secondBottom + secondBottomTangent * handleLengthPx
+    val firstBottomControl = firstBottom - firstBottomTangent * handleLengthPx
 
-    outPath.moveTo(firstTop.x, firstTop.y)
-    outPath.cubicTo(
-        firstTopCtrl.x, firstTopCtrl.y,
-        secondTopCtrl.x, secondTopCtrl.y,
-        secondTop.x, secondTop.y
+    return LigamentGeometry(
+        firstCenter = firstCenter,
+        secondCenter = secondCenter,
+        firstTop = firstTop,
+        firstBottom = firstBottom,
+        secondTop = secondTop,
+        secondBottom = secondBottom,
+        firstTopControl = firstTopControl,
+        secondTopControl = secondTopControl,
+        secondBottomControl = secondBottomControl,
+        firstBottomControl = firstBottomControl,
+        ligamentThicknessPx = ligamentThicknessPx,
+        handleLengthPx = handleLengthPx
     )
-    outPath.lineTo(secondBottom.x, secondBottom.y)
-    outPath.cubicTo(
-        secondBottomCtrl.x, secondBottomCtrl.y,
-        firstBottomCtrl.x, firstBottomCtrl.y,
-        firstBottom.x, firstBottom.y
-    )
-    outPath.close()
 }
 
 @Preview(showBackground = true, widthDp = 420, heightDp = 720)
 @Composable
 private fun GooeyStretchAndSnapSample_Preview() {
-    Box(
+    var minStretchScaleAtTouch by remember { mutableFloatStateOf(0.20f) }
+    var shallowOverlapBandPx by remember { mutableFloatStateOf(45f) }
+
+    var bridgeThicknessMaxPx by remember { mutableFloatStateOf(14f) }
+    var bridgeThicknessMinPx by remember { mutableFloatStateOf(2.5f) }
+
+    var bridgeHandleScale by remember { mutableFloatStateOf(1.0f) }
+
+    var debugEnabled by remember { mutableStateOf(true) }
+    var debugDrawLigament by remember { mutableStateOf(true) }
+    var debugDrawHandles by remember { mutableStateOf(true) }
+    var debugDrawVectors by remember { mutableStateOf(true) }
+    var debugDrawArcSpans by remember { mutableStateOf(true) }
+
+    var debugState by remember {
+        mutableStateOf(
+            GooeyDebugState(
+                isAttached = true,
+                isPullingApart = false,
+                gapPx = 0f,
+                overlapDepthPx = 0f,
+                targetStretch = 0f,
+                bridgeStrength = 0f,
+                phase = StretchPhase.None,
+                ligamentThicknessPx = null,
+                handleLengthPx = null
+            )
+        )
+    }
+
+    Column(
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xFF0B0F14))
+            .padding(16.dp)
     ) {
-        GooeyStretchAndSnapSample(modifier = Modifier.fillMaxSize())
+        Text(
+            text = buildString {
+                append("Phase: ${debugState.phase}")
+                append("  |  attached=${debugState.isAttached}")
+                append("  pulling=${debugState.isPullingApart}")
+                append("  gap=${"%.1f".format(debugState.gapPx)}")
+                append("  stretch=${"%.2f".format(debugState.targetStretch)}")
+                append("  bridge=${"%.2f".format(debugState.bridgeStrength)}")
+                debugState.ligamentThicknessPx?.let { append("  thick=${"%.1f".format(it)}") }
+                debugState.handleLengthPx?.let { append("  handle=${"%.1f".format(it)}") }
+            },
+            color = Color.White
+        )
+
+        Spacer(Modifier.height(10.dp))
+
+        Text("minStretchScaleAtTouch = ${"%.2f".format(minStretchScaleAtTouch)}", color = Color.White)
+        Slider(
+            value = minStretchScaleAtTouch,
+            onValueChange = { minStretchScaleAtTouch = it.coerceIn(0f, 1f) },
+            valueRange = 0f..1f
+        )
+
+        Text("shallowOverlapBandPx = ${"%.0f".format(shallowOverlapBandPx)} px", color = Color.White)
+        Slider(
+            value = shallowOverlapBandPx,
+            onValueChange = { shallowOverlapBandPx = it.coerceIn(5f, 200f) },
+            valueRange = 5f..200f
+        )
+
+        Text("bridgeThicknessMaxPx = ${"%.1f".format(bridgeThicknessMaxPx)}", color = Color.White)
+        Slider(
+            value = bridgeThicknessMaxPx,
+            onValueChange = { bridgeThicknessMaxPx = it.coerceIn(2f, 40f) },
+            valueRange = 2f..40f
+        )
+
+        Text("bridgeThicknessMinPx = ${"%.1f".format(bridgeThicknessMinPx)}", color = Color.White)
+        Slider(
+            value = bridgeThicknessMinPx,
+            onValueChange = { bridgeThicknessMinPx = it.coerceIn(0.5f, bridgeThicknessMaxPx) },
+            valueRange = 0.5f..40f
+        )
+
+        Text("bridgeHandleScale = ${"%.2f".format(bridgeHandleScale)}", color = Color.White)
+        Slider(
+            value = bridgeHandleScale,
+            onValueChange = { bridgeHandleScale = it.coerceIn(0.10f, 2.50f) },
+            valueRange = 0.10f..2.50f
+        )
+
+        Spacer(Modifier.height(10.dp))
+
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            DebugToggleText("Debug", debugEnabled) { debugEnabled = !debugEnabled }
+            DebugToggleText("Ligament", debugDrawLigament) { debugDrawLigament = !debugDrawLigament }
+            DebugToggleText("Handles", debugDrawHandles) { debugDrawHandles = !debugDrawHandles }
+            DebugToggleText("Vectors", debugDrawVectors) { debugDrawVectors = !debugDrawVectors }
+            DebugToggleText("Spans", debugDrawArcSpans) { debugDrawArcSpans = !debugDrawArcSpans }
+        }
+
+        Spacer(Modifier.height(14.dp))
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+        ) {
+            GooeyStretchAndSnapSample(
+                modifier = Modifier.fillMaxSize(),
+                minStretchScaleAtTouch = minStretchScaleAtTouch,
+                shallowOverlapBandPx = shallowOverlapBandPx,
+                bridgeThicknessMaxPx = bridgeThicknessMaxPx,
+                bridgeThicknessMinPx = bridgeThicknessMinPx,
+                bridgeHandleScale = bridgeHandleScale,
+                debugEnabled = debugEnabled,
+                debugDrawLigament = debugDrawLigament,
+                debugDrawHandles = debugDrawHandles,
+                debugDrawVectors = debugDrawVectors,
+                debugDrawArcSpans = debugDrawArcSpans,
+                onDebugState = { debugState = it }
+            )
+        }
     }
+}
+
+@Composable
+private fun DebugToggleText(
+    label: String,
+    enabled: Boolean,
+    onToggle: () -> Unit
+) {
+    Text(
+        text = if (enabled) "[$label]" else label,
+        color = if (enabled) Color(0xFF7CFFB2) else Color(0xFFB0B0B0),
+        modifier = Modifier
+            .background(Color(0x33000000))
+            .padding(horizontal = 10.dp, vertical = 6.dp)
+            .clickable { onToggle() }
+    )
 }
